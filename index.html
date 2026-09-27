@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<title>ByteBuilders 2.5D LiDAR</title>
+
+		<link rel="stylesheet" href="css/global.css" />
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+					"three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+				}
+			}
+		</script>
+
+		<!-- Zstd decoder. Must load before bb25l.js. -->
+		<script src="js/fzstd.js"></script>
+
+		<!-- BB25L decoder. Exposes window.BB25L. -->
+		<script src="js/bb25l.js"></script>
+
+		<!-- LiDAR renderer. Exposes window.LidarRenderer. -->
+		<script src="js/lidar-renderer.js"></script>
+	</head>
+
+	<body>
+		<div class="app-shell">
+			<header class="topbar">
+				<div class="brand">ByteBuilders 2.5D LiDAR</div>
+
+				<button class="icon-button" id="reset-btn" title="Reset View">
+					<span class="reset-icon"></span>
+				</button>
+			</header>
+
+			<div class="viewer">
+				<canvas id="lidar-canvas"></canvas>
+
+				<div class="viewer-overlay">
+					<div class="viewer-title">
+						<div class="eyebrow">SIH 53 - BB25L RASTER ENGINE</div>
+
+						<h1 id="demo-title">Loading LiDAR Frame</h1>
+					</div>
+
+					<div class="viewer-stats">
+						<div class="stat">
+							<span class="stat-label"> CELLS </span>
+
+							<strong id="object-count"> 0 </strong>
+						</div>
+
+						<div class="stat">
+							<span class="stat-label"> FPS </span>
+
+							<strong id="fps-val"> 0 </strong>
+						</div>
+					</div>
+				</div>
+
+				<div class="viewer-hint">
+					<span>ROTATE: Left Click + Drag</span>
+					<span>PAN: Right Click + Drag</span>
+					<span>ZOOM: Scroll Wheel</span>
+				</div>
+			</div>
+
+			<footer class="bottombar">
+				<div class="status">
+					<div class="status-dot" id="status-dot"></div>
+
+					<span id="status-text"> Initializing </span>
+				</div>
+
+				<div class="mode">
+					<span class="mode-label"> BB25L </span>
+
+					<span class="mode-button is-active"> FRAME 0000 </span>
+				</div>
+			</footer>
+		</div>
+
+		<script type="module" src="js/demo.js"></script>
+	</body>
+</html>
