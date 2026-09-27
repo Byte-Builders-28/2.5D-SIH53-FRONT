@@ -2,7 +2,7 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<title>Radial Grid + Render Vertices</title>
+		<title>Radial Grid Triangles</title>
 
 		<style>
 			html,
@@ -52,8 +52,7 @@
 			// Configuration
 			// ============================================================
 
-			const VERTEX_SKIP = 2;
-			const VERTEX_SIZE = 0.28;
+			const TAU = Math.PI * 2;
 
 			// ============================================================
 			// Radial Band
@@ -135,6 +134,25 @@
 						this.numCells += band.cell_count;
 					}
 				}
+
+				describe() {
+					console.log("[RADIAL GRID]");
+
+					for (let i = 0; i < this.bands.length; i++) {
+						const band = this.bands[i];
+
+						console.log(
+							`B${i}: ` +
+								`${band.start.toFixed(2)}-${band.end.toFixed(2)} m | ` +
+								`dr=${band.actual_resolution.toFixed(3)} | ` +
+								`rings=${band.ring_count} | ` +
+								`sectors=${band.angular_sectors} | ` +
+								`cells=${band.cell_count}`,
+						);
+					}
+
+					console.log(`Total cells: ${this.numCells}`);
+				}
 			}
 
 			// ============================================================
@@ -144,106 +162,156 @@
 			const radialGrid = new RadialGrid(
 				[
 					new RadialBand(0.0, 10.0, 0.3),
+
 					new RadialBand(10.0, 30.0, 0.45),
+
 					new RadialBand(30.0, 60.0, 0.7),
+
 					new RadialBand(60.0, 100.0, 1.0),
 				],
 				1.0,
 			);
 
-			// ============================================================
-			// Render Vertex Generation
-			// ============================================================
+			radialGrid.describe();
 
-			const TAU = Math.PI * 2;
+			// ============================================================
+			// Mesh Generation
+			// ============================================================
 
 			const vertices = [];
-			const vertexMap = new Map();
-
-			function key(x, y) {
-				return `${Math.round(x * 10000)}:` + `${Math.round(y * 10000)}`;
-			}
+			const indices = [];
 
 			function addVertex(radius, theta) {
 				const x = radius * Math.cos(theta);
 
 				const y = radius * Math.sin(theta);
 
-				const k = key(x, y);
+				const index = vertices.length / 3;
 
-				if (vertexMap.has(k)) {
-					return vertexMap.get(k);
-				}
-
-				const index = vertices.length;
-
-				vertices.push({
-					x,
-					y,
-				});
-
-				vertexMap.set(k, index);
+				vertices.push(x, y, 0);
 
 				return index;
 			}
 
-			// ------------------------------------------------------------
-			// Keep grid intersections.
-			// ------------------------------------------------------------
-
-			for (const band of radialGrid.bands) {
-				for (let ring = 0; ring <= band.ring_count; ring++) {
-					const radius = band.start + ring * band.actual_resolution;
-
-					if (radius <= 0) {
-						continue;
-					}
-
-					for (let sector = 0; sector < band.angular_sectors; sector++) {
-						const theta = (sector / band.angular_sectors) * TAU;
-
-						addVertex(radius, theta);
-					}
-				}
-			}
-
-			// ------------------------------------------------------------
-			// Sparse points along sector edges.
+			// ============================================================
+			// Generate Each Band Independently
+			// ============================================================
 			//
-			// Every VERTEX_SKIP-th point is kept.
-			// Endpoints are always kept.
-			// ------------------------------------------------------------
+			// IMPORTANT:
+			//
+			// A band has its own angular sector count.
+			//
+			// B0: 107 sectors
+			// B1: 283 sectors
+			// B2: 406 sectors
+			// B3: 503 sectors
+			//
+			// Therefore sectors are NEVER connected by index
+			// across band boundaries.
+			//
+			// ============================================================
 
-			for (const band of radialGrid.bands) {
+			for (
+				let bandIndex = 0;
+				bandIndex < radialGrid.bands.length;
+				bandIndex++
+			) {
+				const band = radialGrid.bands[bandIndex];
+
 				const sectors = band.angular_sectors;
 
-				const length = band.end - band.start;
+				const rings = band.ring_count;
 
-				const sampleCount = Math.max(1, Math.ceil(length / 0.75));
+				const dr = band.actual_resolution;
 
-				for (let sector = 0; sector < sectors; sector++) {
-					const theta = (sector / sectors) * TAU;
+				// --------------------------------------------------------
+				// Vertices
+				// --------------------------------------------------------
 
-					for (let i = 0; i <= sampleCount; i++) {
-						if (i !== 0 && i !== sampleCount && i % VERTEX_SKIP !== 0) {
+				const bandVertices = [];
+
+				for (let ring = 0; ring <= rings; ring++) {
+					const radius = band.start + ring * dr;
+
+					const ringVertices = [];
+
+					// ----------------------------------------------------
+					// Center
+					// ----------------------------------------------------
+
+					if (radius <= 1e-6) {
+						const center = addVertex(0, 0);
+
+						for (let sector = 0; sector < sectors; sector++) {
+							ringVertices.push(center);
+						}
+					}
+
+					// ----------------------------------------------------
+					// Normal ring
+					// ----------------------------------------------------
+					else {
+						for (let sector = 0; sector < sectors; sector++) {
+							const theta = (sector / sectors) * TAU;
+
+							ringVertices.push(addVertex(radius, theta));
+						}
+					}
+
+					bandVertices.push(ringVertices);
+				}
+
+				// --------------------------------------------------------
+				// Triangles
+				// --------------------------------------------------------
+
+				for (let ring = 0; ring < rings; ring++) {
+					const inner = bandVertices[ring];
+
+					const outer = bandVertices[ring + 1];
+
+					const innerRadius = band.start + ring * dr;
+
+					for (let sector = 0; sector < sectors; sector++) {
+						const nextSector = (sector + 1) % sectors;
+
+						const a = inner[sector];
+
+						const b = inner[nextSector];
+
+						const c = outer[sector];
+
+						const d = outer[nextSector];
+
+						// ------------------------------------------------
+						// Center fan
+						// ------------------------------------------------
+
+						if (innerRadius <= 1e-6) {
+							indices.push(a, c, d);
+
 							continue;
 						}
 
-						const t = i / sampleCount;
+						// ------------------------------------------------
+						// Normal quad
+						// ------------------------------------------------
 
-						const radius = band.start + length * t;
+						indices.push(
+							a,
+							c,
+							b,
 
-						if (radius <= 0) {
-							continue;
-						}
-
-						addVertex(radius, theta);
+							b,
+							c,
+							d,
+						);
 					}
 				}
 			}
 
 			// ============================================================
-			// Three.js
+			// Three.js Scene
 			// ============================================================
 
 			const scene = new THREE.Scene();
@@ -276,129 +344,80 @@
 			controls.update();
 
 			// ============================================================
-			// Render Vertices
+			// Ground Geometry
 			// ============================================================
 
-			const positions = new Float32Array(vertices.length * 3);
+			const geometry = new THREE.BufferGeometry();
 
-			for (let i = 0; i < vertices.length; i++) {
-				positions[i * 3] = vertices[i].x;
-
-				positions[i * 3 + 1] = vertices[i].y;
-
-				positions[i * 3 + 2] = 0.2;
-			}
-
-			const pointGeometry = new THREE.BufferGeometry();
-
-			pointGeometry.setAttribute(
+			geometry.setAttribute(
 				"position",
-				new THREE.BufferAttribute(positions, 3),
+				new THREE.Float32BufferAttribute(vertices, 3),
 			);
 
-			const pointMaterial = new THREE.PointsMaterial({
-				color: 0xffffff,
-				size: VERTEX_SIZE,
-				sizeAttenuation: true,
+			geometry.setIndex(indices);
+
+			geometry.computeVertexNormals();
+
+			// ============================================================
+			// Solid Mesh
+			// ============================================================
+
+			const solidMaterial = new THREE.MeshBasicMaterial({
+				color: 0x444444,
+				side: THREE.DoubleSide,
+				transparent: true,
+				opacity: 0.55,
 			});
 
-			scene.add(new THREE.Points(pointGeometry, pointMaterial));
+			const solidMesh = new THREE.Mesh(geometry, solidMaterial);
+
+			scene.add(solidMesh);
 
 			// ============================================================
-			// Grid Lines
+			// Wireframe
 			// ============================================================
 
-			const linePositions = [];
-
-			function addLine(x0, y0, x1, y1) {
-				linePositions.push(x0, y0, 0.0, x1, y1, 0.0);
-			}
-
-			// Ring boundaries
-
-			const ringRadii = [];
-
-			for (const band of radialGrid.bands) {
-				for (let ring = 0; ring <= band.ring_count; ring++) {
-					const radius = band.start + ring * band.actual_resolution;
-
-					if (ringRadii.every((r) => Math.abs(r - radius) > 1e-6)) {
-						ringRadii.push(radius);
-					}
-				}
-			}
-
-			for (const radius of ringRadii) {
-				if (radius <= 0) {
-					continue;
-				}
-
-				const segments = Math.max(128, Math.ceil((TAU * radius) / 0.5));
-
-				for (let i = 0; i < segments; i++) {
-					const a0 = (i / segments) * TAU;
-
-					const a1 = ((i + 1) / segments) * TAU;
-
-					addLine(
-						radius * Math.cos(a0),
-						radius * Math.sin(a0),
-						radius * Math.cos(a1),
-						radius * Math.sin(a1),
-					);
-				}
-			}
-
-			// Sector boundaries
-
-			for (const band of radialGrid.bands) {
-				for (let sector = 0; sector < band.angular_sectors; sector++) {
-					const theta = (sector / band.angular_sectors) * TAU;
-
-					const c = Math.cos(theta);
-
-					const s = Math.sin(theta);
-
-					addLine(band.start * c, band.start * s, band.end * c, band.end * s);
-				}
-			}
-
-			const lineGeometry = new THREE.BufferGeometry();
-
-			lineGeometry.setAttribute(
-				"position",
-				new THREE.Float32BufferAttribute(linePositions, 3),
-			);
-
-			const lineMaterial = new THREE.LineBasicMaterial({
-				color: 0x666666,
+			const wireMaterial = new THREE.MeshBasicMaterial({
+				color: 0x999999,
+				wireframe: true,
+				side: THREE.DoubleSide,
 			});
 
-			scene.add(new THREE.LineSegments(lineGeometry, lineMaterial));
+			const wireframe = new THREE.Mesh(geometry, wireMaterial);
+
+			scene.add(wireframe);
 
 			// ============================================================
-			// Center
+			// Center Marker
 			// ============================================================
 
-			scene.add(
-				new THREE.Mesh(
-					new THREE.SphereGeometry(0.35, 12, 12),
-					new THREE.MeshBasicMaterial({
-						color: 0xffffff,
-					}),
-				),
+			const center = new THREE.Mesh(
+				new THREE.SphereGeometry(0.35, 12, 12),
+				new THREE.MeshBasicMaterial({
+					color: 0xffffff,
+				}),
 			);
 
+			scene.add(center);
+
 			// ============================================================
-			// Info
+			// Information
 			// ============================================================
 
 			document.getElementById("info").textContent =
-				`Radial Grid + Sparse Render Vertices\n` +
-				`-------------------------------------\n` +
+				`Radial Ground Mesh\n` +
+				`----------------------\n` +
 				`Grid cells: ${radialGrid.numCells.toLocaleString()}\n` +
-				`Render vertices: ${vertices.length.toLocaleString()}\n` +
-				`Vertex skip: ${VERTEX_SKIP}`;
+				`Mesh vertices: ${(vertices.length / 3).toLocaleString()}\n` +
+				`Triangles: ${(indices.length / 3).toLocaleString()}\n\n` +
+				radialGrid.bands
+					.map(
+						(band, i) =>
+							`B${i}: ` +
+							`${band.ring_count} rings × ` +
+							`${band.angular_sectors} sectors`,
+					)
+					.join("\n");
 
 			// ============================================================
 			// Resize
