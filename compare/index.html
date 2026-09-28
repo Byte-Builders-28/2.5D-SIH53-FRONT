@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<title>LiDimention | Comparison</title>
+
+		<link rel="stylesheet" href="../css/global.css" />
+		<link rel="stylesheet" href="../css/compare.css" />
+	</head>
+
+	<body>
+		<!-- Ambient Background -->
+		<div class="background">
+			<div class="grid"></div>
+			<div class="glow"></div>
+		</div>
+
+		<!-- Top Header -->
+		<header class="top-header">
+			<div class="brand-group">
+				<a class="brand" href="/" title="Back to LiDimention Home">
+					Li<span>Dimention</span>
+				</a>
+				<span class="brand-eyebrow">Comparison</span>
+			</div>
+			<a class="nav-btn" href="/">← Home</a>
+		</header>
+
+		<!-- Main Content -->
+		<main>
+			<section class="hero">
+				<div class="eyebrow">Pipeline Efficiency</div>
+				<h1>From point-level data to <span class="teal">adaptive representation.</span></h1>
+			</section>
+
+			<!-- Pipeline Cards Grid -->
+			<section class="cards-grid">
+				<!-- RAW LIDAR STREAM -->
+				<div class="card raw">
+					<div class="card-header">
+						<h2 class="card-title">RAW LIDAR STREAM</h2>
+					</div>
+					<ul class="stat-list">
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>1,000,000</strong> points / frame</span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>21 MB</strong> / frame</span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>10 FPS</strong></span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>210 MB / sec</strong></span>
+						</li>
+					</ul>
+				</div>
+
+				<!-- LiDimention -->
+				<div class="card lidar">
+					<div class="card-header">
+						<h2 class="card-title">LiDimention</h2>
+					</div>
+					<ul class="stat-list">
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>20K-40K</strong> occupied cells / frame</span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>10 bytes</strong> / cell</span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>25 FPS</strong></span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text"><strong>~5-10 MB / sec</strong></span>
+						</li>
+					</ul>
+				</div>
+
+				<!-- Zstandard Compression -->
+				<div class="card comp">
+					<div class="card-header">
+						<h2 class="card-title">Zstandard Compression</h2>
+					</div>
+					<ul class="stat-list">
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text">Input: <strong>~5-10 MB / sec</strong></span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text">Compression: <strong>3.5-5</strong></span>
+						</li>
+						<li class="stat-item">
+							<span class="stat-bullet"></span>
+							<span class="stat-text">Output: <strong>~1-3 MB / sec</strong></span>
+						</li>
+					</ul>
+				</div>
+			</section>
+
+			<!-- Comparison Table -->
+			<section class="table-section">
+				<div class="table-container">
+					<table>
+						<thead>
+							<tr>
+								<th>Metric</th>
+								<th class="raw-col">RAW</th>
+								<th class="lidar-col">LiDimention</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td class="metric-name">Data rate</td>
+								<td class="metric-raw">210 MB / sec</td>
+								<td class="metric-lidar">~1-3 MB / sec</td>
+							</tr>
+							<tr>
+								<td class="metric-name">Representation</td>
+								<td class="metric-raw">1,000,000 points / frame</td>
+								<td class="metric-lidar">20K-40K occupied cells / frame</td>
+							</tr>
+							<tr>
+								<td class="metric-name">Frame rate</td>
+								<td class="metric-raw">10 FPS</td>
+								<td class="metric-lidar">25 FPS</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<!-- Impact Callout & CTA -->
+			<section class="impact-banner">
+				<div class="rate-delta">
+					<span class="rate-raw">210 MB / sec</span>
+					<span class="rate-arrow">→</span>
+					<span class="rate-final">~1-3 MB / sec</span>
+				</div>
+				<p class="impact-note">After adaptive sparse encoding + Zstandard</p>
+				<div class="actions">
+					<a class="btn-cta" href="/render">Explore the Demo</a>
+				</div>
+			</section>
+		</main>
+	</body>
+</html>
