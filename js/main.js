@@ -14,6 +14,17 @@ import {
 
 import { Raster2DView } from "./view/raster_2d_view.js";
 
+import { PointCloudView } from "./view/point_cloud_view.js";
+
+import {
+	loadPointCloudFrame,
+	PC_FRAME_COUNT,
+	PC_FRAME_DIRECTORY,
+	PC_FRAME_PREFIX,
+	PC_FRAME_EXTENSION,
+	PC_MAX_POINTS,
+} from "./point_cloud_decoder.js";
+
 import { Playback } from "./playback.js";
 import { ViewManager } from "./view/view_manager.js";
 
@@ -110,6 +121,19 @@ class Application {
 			framePrefix:     RASTER_FRAME_PREFIX,
 			frameExtension:  RASTER_FRAME_EXTENSION,
 			bufferSize:      4,
+			// No decoder supplied → FrameManager uses BB25L (legacy path).
+		});
+
+		// Point-cloud source – uses the injected Zstd XYZ decoder.
+		this.frameManager.setSource("pointCloud", {
+			frameCount:      PC_FRAME_COUNT,
+			frameDirectory:  PC_FRAME_DIRECTORY,
+			framePrefix:     PC_FRAME_PREFIX,
+			frameExtension:  PC_FRAME_EXTENSION,
+			bufferSize:      4,
+			maxPoints:       PC_MAX_POINTS,
+			// Injected decoder: fetch + Zstd decompress + Float32 XYZ.
+			decoder:         (url) => loadPointCloudFrame(url, { maxPoints: PC_MAX_POINTS }),
 		});
 
 		// ========================================================
@@ -128,14 +152,14 @@ class Application {
 
 		this.viewManager.register(VIEW_RASTER_2D, this.raster2DView);
 
-		// Point-cloud view will be registered here later.
-		//
-		// this.pointCloudView = new PointCloudView(this.scene);
-		//
-		// this.viewManager.register(
-		//     VIEW_POINT_CLOUD,
-		//     this.pointCloudView,
-		// );
+		// Point-cloud view — 3D LiDAR point cloud (THREE.Points).
+		this.pointCloudView = new PointCloudView(this.scene, {
+			maxPoints: PC_MAX_POINTS,
+			pointSize: 1.5,
+			color:     0xffffff,
+		});
+
+		this.viewManager.register(VIEW_POINT_CLOUD, this.pointCloudView);
 
 		// ========================================================
 		// Playback
@@ -213,8 +237,12 @@ class Application {
 		const requestId = ++this.displayRequestId;
 		const info = document.getElementById("info");
 
+		// Determine which data source corresponds to the active view.
+		const activeView = this.viewManager.getActiveViewName();
+		const sourceName = activeView === VIEW_POINT_CLOUD ? "pointCloud" : "raster";
+
 		try {
-			const frame = await this.frameManager.getFrame(frameIndex);
+			const frame = await this.frameManager.getFrame(frameIndex, sourceName);
 
 			// A newer frame was requested while this one was loading.
 			if (requestId !== this.displayRequestId) {
@@ -227,19 +255,31 @@ class Application {
 
 			this.viewManager.update(frame);
 
-			const buffer = this.frameManager.getBufferInfo();
+			const buffer = this.frameManager.getBufferInfo(sourceName);
 
 			if (info) {
-				info.textContent = [
-					"BB25L Raster",
-					"----------------------",
-					`Frame: ${frameIndex.toString().padStart(4, "0")}`,
-					`Occupied cells: ${frame.occupiedCellCount.toLocaleString()}`,
-					`Grid cells: ${this.rasterView.getCellCount().toLocaleString()}`,
-					`Buffered: ${buffer.buffered
-						.map((index) => index.toString().padStart(4, "0"))
-						.join(", ")}`,
-				].join("\n");
+				if (activeView === VIEW_POINT_CLOUD) {
+					info.textContent = [
+						"Point Cloud",
+						"----------------------",
+						`Frame:    ${frameIndex.toString().padStart(4, "0")}`,
+						`Points:   ${frame.pointCount.toLocaleString()}`,
+						`Buffered: ${buffer.buffered
+							.map((index) => index.toString().padStart(4, "0"))
+							.join(", ")}`,
+					].join("\n");
+				} else {
+					info.textContent = [
+						"BB25L Raster",
+						"----------------------",
+						`Frame: ${frameIndex.toString().padStart(4, "0")}`,
+						`Occupied cells: ${frame.occupiedCellCount.toLocaleString()}`,
+						`Grid cells: ${this.rasterView.getCellCount().toLocaleString()}`,
+						`Buffered: ${buffer.buffered
+							.map((index) => index.toString().padStart(4, "0"))
+							.join(", ")}`,
+					].join("\n");
+				}
 			}
 		} catch (error) {
 			if (requestId !== this.displayRequestId) {

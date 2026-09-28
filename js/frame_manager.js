@@ -2,7 +2,8 @@
 // Frame Manager
 // ============================================================
 
-const BB25L = globalThis.BB25L;
+// BB25L is accessed at call-time via globalThis so that
+// frame_manager.js does not need to know when bb25l.js loads.
 
 // ============================================================
 // Frame Manager
@@ -29,6 +30,17 @@ export class FrameManager {
 			framePrefix = "",
 			frameExtension = "",
 			bufferSize = 4,
+			// Optional async decoder function.
+			// Signature: (url: string) => Promise<any>
+			//
+			// When provided, FrameManager calls this instead of BB25L.load()
+			// to load and decode a frame.  This allows different source
+			// types (raster BB25L, point-cloud Zstd XYZ, …) to coexist
+			// within the same FrameManager instance without modifying
+			// any existing code paths.
+			//
+			// If omitted (undefined / null), the legacy BB25L path is used.
+			decoder = null,
 		} = config;
 
 		if (!Number.isInteger(frameCount) || frameCount <= 0) {
@@ -54,6 +66,9 @@ export class FrameManager {
 			framePrefix,
 			frameExtension,
 			bufferSize: Math.max(1, Math.trunc(bufferSize)),
+			// decoder: null → use BB25L (legacy behaviour, unchanged)
+			// decoder: fn  → call fn(url) and cache the result
+			decoder: typeof decoder === "function" ? decoder : null,
 			frames: new Map(),
 			loading: new Map(),
 			currentIndex: null,
@@ -191,17 +206,35 @@ export class FrameManager {
 			return existingLoad;
 		}
 
-		if (!globalThis.BB25L) {
-			throw new Error(
-				"BB25L is not available. Make sure fzstd.js and bb25l.js are loaded before main.js.",
-			);
-		}
-
 		const url = this.frameUrl(normalizedIndex, source.name);
 
 		console.log(`[FRAME] Loading ${url}`);
 
-		const promise = globalThis.BB25L.load(url)
+		// --------------------------------------------------------
+		// Choose the decoder for this source.
+		//
+		// source.decoder !== null  →  use the injected decoder.
+		// source.decoder === null  →  fall back to the global BB25L
+		//                             loader (legacy behaviour).
+		// --------------------------------------------------------
+
+		let loadPromise;
+
+		if (source.decoder !== null) {
+			// Injected decoder path (e.g. point-cloud XYZ).
+			loadPromise = source.decoder(url);
+		} else {
+			// Legacy BB25L path — unchanged from the original.
+			if (!globalThis.BB25L) {
+				throw new Error(
+					"BB25L is not available. Make sure fzstd.js and bb25l.js are loaded before main.js.",
+				);
+			}
+
+			loadPromise = globalThis.BB25L.load(url);
+		}
+
+		const promise = loadPromise
 			.then((frame) => {
 				source.frames.set(normalizedIndex, frame);
 				source.loading.delete(normalizedIndex);
