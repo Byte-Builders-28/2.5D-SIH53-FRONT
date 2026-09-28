@@ -5,7 +5,7 @@ import {
 	RadialGrid,
 	RadialDisc,
 	groundSelector,
-} from "./radial_disc.js";
+} from "../radial_disc.js";
 
 // ============================================================
 // Configuration

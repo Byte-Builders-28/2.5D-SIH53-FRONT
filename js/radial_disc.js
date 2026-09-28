@@ -586,23 +586,6 @@ export class RadialDisc {
 }
 
 // ============================================================
-// Ground selector
-// ============================================================
-
-export function groundSelector(frame, index) {
-	const metadata = BB25L.getMetadata(frame, index);
-
-	if (!BB25L.hasGround(metadata)) {
-		return null;
-	}
-
-	return {
-		present: true,
-		z: BB25L.getGroundZMeters(frame, index),
-	};
-}
-
-// ============================================================
 // Shared geometry cleanup
 // ============================================================
 
