@@ -51,9 +51,15 @@
 		<script src="./js/fzstd.js"></script>
 		<script src="./js/bb25l.js"></script>
 
-		<script type="module">
+		<!-- <script type="module">
 			import * as THREE from "three";
 			import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+			import {
+				RadialBand,
+				RadialGrid,
+				RadialDisc,
+				groundSelector,
+			} from "./js/radial_disc.js";
 
 			// ============================================================
 			// Configuration
@@ -61,113 +67,15 @@
 
 			const FRAME_URL = "./data/raster/frame_0532.bb25l";
 
-			const TAU = Math.PI * 2;
-
-			// ============================================================
-			// Radial Band
-			// ============================================================
-
-			class RadialBand {
-				constructor(start, end, radialResolution) {
-					this.start = start;
-
-					this.end = end;
-
-					this.radial_resolution = radialResolution;
-				}
-			}
-
 			// ============================================================
 			// Radial Grid
-			// ============================================================
-
-			class RadialGrid {
-				constructor(bands, angularCellFactor = 1.0) {
-					this.bands = bands;
-
-					this.angular_cell_factor = angularCellFactor;
-
-					this._validate();
-					this._build();
-				}
-
-				_validate() {
-					let expectedStart = this.bands[0].start;
-
-					for (const band of this.bands) {
-						if (Math.abs(band.start - expectedStart) > 1e-6) {
-							throw new Error("Radial bands are not continuous.");
-						}
-
-						if (band.end <= band.start) {
-							throw new Error("Invalid radial band.");
-						}
-
-						if (band.radial_resolution <= 0) {
-							throw new Error("Invalid radial resolution.");
-						}
-
-						expectedStart = band.end;
-					}
-				}
-
-				_build() {
-					this.numCells = 0;
-
-					for (let bandIndex = 0; bandIndex < this.bands.length; bandIndex++) {
-						const band = this.bands[bandIndex];
-
-						const ringCount = Math.ceil(
-							(band.end - band.start) / band.radial_resolution,
-						);
-
-						const actualResolution = (band.end - band.start) / ringCount;
-
-						const midpoint = band.start + (band.end - band.start) * 0.5;
-
-						const targetTangentialSize =
-							actualResolution * this.angular_cell_factor;
-
-						const angularSectors = Math.max(
-							1,
-							Math.ceil((2 * Math.PI * midpoint) / targetTangentialSize),
-						);
-
-						band.ring_count = ringCount;
-
-						band.actual_resolution = actualResolution;
-
-						band.angular_sectors = angularSectors;
-
-						band.cell_count = ringCount * angularSectors;
-
-						band.cell_offset = this.numCells;
-
-						this.numCells += band.cell_count;
-					}
-				}
-
-				getCellId(bandIndex, ringIndex, sectorIndex) {
-					const band = this.bands[bandIndex];
-
-					return (
-						band.cell_offset + ringIndex * band.angular_sectors + sectorIndex
-					);
-				}
-			}
-
-			// ============================================================
-			// Current Grid
 			// ============================================================
 
 			const radialGrid = new RadialGrid(
 				[
 					new RadialBand(0.0, 10.0, 0.3),
-
 					new RadialBand(10.0, 30.0, 0.45),
-
 					new RadialBand(30.0, 60.0, 0.7),
-
 					new RadialBand(60.0, 100.0, 1.0),
 				],
 				1.0,
@@ -193,333 +101,10 @@
 			console.log(`Total cells: ${radialGrid.numCells}`);
 
 			// ============================================================
-			// Angle Helpers
-			// ============================================================
-
-			function normalizeAngle(angle) {
-				angle %= TAU;
-
-				if (angle < 0) {
-					angle += TAU;
-				}
-
-				return angle;
-			}
-
-			function angleKey(angle) {
-				return Math.round(normalizeAngle(angle) * 1e10);
-			}
-
-			function getBandAngles(band) {
-				const angles = [];
-
-				for (let sector = 0; sector < band.angular_sectors; sector++) {
-					angles.push((sector / band.angular_sectors) * TAU);
-				}
-
-				return angles;
-			}
-
-			function mergeAngles(...angleLists) {
-				const map = new Map();
-
-				for (const list of angleLists) {
-					for (const angle of list) {
-						const normalized = normalizeAngle(angle);
-
-						map.set(angleKey(normalized), normalized);
-					}
-				}
-
-				return [...map.values()].sort((a, b) => a - b);
-			}
-
-			// ============================================================
-			// Boundary Angle Sets
-			//
-			// 0m
-			// 10m
-			// 30m
-			// 60m
-			// 100m
-			// ============================================================
-
-			const boundaryAngles = [];
-
-			for (let boundary = 0; boundary <= radialGrid.bands.length; boundary++) {
-				if (boundary === 0) {
-					boundaryAngles.push([0]);
-
-					continue;
-				}
-
-				if (boundary === radialGrid.bands.length) {
-					const band = radialGrid.bands[boundary - 1];
-
-					boundaryAngles.push(getBandAngles(band));
-
-					continue;
-				}
-
-				const previous = radialGrid.bands[boundary - 1];
-
-				const next = radialGrid.bands[boundary];
-
-				/*
-				 * The boundary contains the union
-				 * of both neighboring angular grids.
-				 */
-				boundaryAngles.push(
-					mergeAngles(getBandAngles(previous), getBandAngles(next)),
-				);
-			}
-
-			// ============================================================
-			// Geometry
-			//
-			// NON-INDEXED ON PURPOSE.
-			//
-			// Every triangle owns one cell ID.
-			//
-			// Shared geometric locations are duplicated so
-			// the GPU can independently collapse each triangle
-			// according to its owning cell.
-			// ============================================================
-
-			const positions = [];
-			const triangleCellIds = [];
-
-			function addVertex(x, y, cellId) {
-				positions.push(x, y, 0);
-
-				triangleCellIds.push(cellId);
-			}
-
-			function addTriangle(a, b, c, cellId) {
-				addVertex(a.x, a.y, cellId);
-
-				addVertex(b.x, b.y, cellId);
-
-				addVertex(c.x, c.y, cellId);
-			}
-
-			function ringPoint(radius, angle) {
-				return {
-					x: radius * Math.cos(angle),
-
-					y: radius * Math.sin(angle),
-				};
-			}
-
-			// ============================================================
-			// Build First Band
-			//
-			// The center is a fan.
-			//
-			// Every center triangle belongs to exactly one
-			// first-band cell.
-			// ============================================================
-
-			function buildFirstBand() {
-				const band = radialGrid.bands[0];
-
-				const innerRadius = 0;
-
-				const outerRadius = band.actual_resolution;
-
-				const angles = getBandAngles(band);
-
-				for (let sector = 0; sector < band.angular_sectors; sector++) {
-					const next = (sector + 1) % band.angular_sectors;
-
-					const p0 = ringPoint(outerRadius, angles[sector]);
-
-					const p1 = ringPoint(outerRadius, angles[next]);
-
-					const cellId = radialGrid.getCellId(0, 0, sector);
-
-					addTriangle(
-						{
-							x: 0,
-							y: 0,
-						},
-
-						p0,
-
-						p1,
-
-						cellId,
-					);
-				}
-			}
-
-			// ============================================================
-			// Build Native Cells
-			//
-			// Each quad is exactly one radial cell.
-			//
-			// Two triangles:
-			//
-			//     A -------- B
-			//     |        / |
-			//     |      /   |
-			//     |    /     |
-			//     |  /       |
-			//     D -------- C
-			//
-			// Both triangles carry the same cellId.
-			// ============================================================
-
-			function buildNativeBand(bandIndex) {
-				const band = radialGrid.bands[bandIndex];
-
-				for (let ring = 0; ring < band.ring_count; ring++) {
-					const innerRadius = band.start + ring * band.actual_resolution;
-
-					const outerRadius = innerRadius + band.actual_resolution;
-
-					const angles = getBandAngles(band);
-
-					for (let sector = 0; sector < band.angular_sectors; sector++) {
-						const next = (sector + 1) % band.angular_sectors;
-
-						/*
-						 * First radial cell of the
-						 * first band is already the
-						 * center fan.
-						 */
-						if (bandIndex === 0 && ring === 0) {
-							continue;
-						}
-
-						const a = ringPoint(innerRadius, angles[sector]);
-
-						const b = ringPoint(outerRadius, angles[sector]);
-
-						const c = ringPoint(outerRadius, angles[next]);
-
-						const d = ringPoint(innerRadius, angles[next]);
-
-						const cellId = radialGrid.getCellId(bandIndex, ring, sector);
-
-						addTriangle(a, b, c, cellId);
-
-						addTriangle(a, c, d, cellId);
-					}
-				}
-			}
-
-			// ============================================================
-			// Band Boundary Transition
-			//
-			// This creates triangles between two different
-			// angular resolutions.
-			//
-			// Each triangle is still explicitly assigned to
-			// one cell.
-			//
-			// The transition is assigned to the inner band's
-			// final radial cells.
-			// ============================================================
-
-			function buildBandTransition(bandIndex) {
-				const innerBand = radialGrid.bands[bandIndex];
-
-				const outerBand = radialGrid.bands[bandIndex + 1];
-
-				const radius = innerBand.end;
-
-				const innerAngles = getBandAngles(innerBand);
-
-				const outerAngles = getBandAngles(outerBand);
-
-				/*
-				 * Build the union of both angular
-				 * grids at the shared boundary.
-				 */
-				const angles = mergeAngles(innerAngles, outerAngles);
-
-				/*
-				 * Each interval on the union ring is
-				 * assigned to the radial cell from the
-				 * inner band whose angular sector contains
-				 * that interval.
-				 */
-				for (let i = 0; i < angles.length; i++) {
-					const angle0 = angles[i];
-
-					const angle1 =
-						i + 1 < angles.length ? angles[i + 1] : angles[0] + TAU;
-
-					const midpoint = (angle0 + angle1) * 0.5;
-
-					const normalizedMid = normalizeAngle(midpoint);
-
-					const sector = Math.min(
-						innerBand.angular_sectors - 1,
-						Math.floor((normalizedMid / TAU) * innerBand.angular_sectors),
-					);
-
-					const cellId = radialGrid.getCellId(
-						bandIndex,
-						innerBand.ring_count - 1,
-						sector,
-					);
-
-					const p0 = ringPoint(radius, angle0);
-
-					const p1 = ringPoint(radius, angle1);
-
-					/*
-					 * Transition triangles need an
-					 * interior point belonging to the
-					 * inner cell.
-					 *
-					 * This creates a fan over the
-					 * boundary interval.
-					 */
-					const innerRadius = radius - innerBand.actual_resolution;
-
-					const center = ringPoint(innerRadius, normalizedMid);
-
-					addTriangle(center, p0, p1, cellId);
-				}
-			}
-
-			// ============================================================
-			// Build Topology
-			// ============================================================
-
-			buildFirstBand();
-
-			for (
-				let bandIndex = 0;
-				bandIndex < radialGrid.bands.length;
-				bandIndex++
-			) {
-				buildNativeBand(bandIndex);
-			}
-
-			for (
-				let bandIndex = 0;
-				bandIndex < radialGrid.bands.length - 1;
-				bandIndex++
-			) {
-				buildBandTransition(bandIndex);
-			}
-
-			console.log("[GROUND TOPOLOGY]");
-
-			console.log("Vertices:", positions.length / 3);
-
-			console.log("Triangles:", triangleCellIds.length / 3);
-
-			// ============================================================
-			// Three.js Scene
+			// Scene
 			// ============================================================
 
 			const scene = new THREE.Scene();
-
 			scene.background = new THREE.Color(0x111111);
 
 			const camera = new THREE.PerspectiveCamera(
@@ -536,9 +121,7 @@
 			});
 
 			renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
 			renderer.setSize(window.innerWidth, window.innerHeight);
-
 			document.body.appendChild(renderer.domElement);
 
 			// ============================================================
@@ -548,90 +131,7 @@
 			const controls = new OrbitControls(camera, renderer.domElement);
 
 			controls.target.set(0, 0, 0);
-
 			controls.update();
-
-			// ============================================================
-			// BB25L Cell Lookup
-			//
-			// One texel = one RadialGrid cell.
-			//
-			// R = ground occupied
-			// G = ground Z in meters
-			// ============================================================
-
-			function createCellLookup(frame) {
-				const cellCount = radialGrid.numCells;
-
-				/*
-				 * Keep texture dimensions within
-				 * normal WebGL limits.
-				 */
-				const width = Math.min(
-					1024,
-					Math.max(1, Math.ceil(Math.sqrt(cellCount))),
-				);
-
-				const height = Math.ceil(cellCount / width);
-
-				const pixels = new Float32Array(width * height * 4);
-
-				for (let i = 0; i < frame.occupiedCellCount; i++) {
-					const cellId = frame.cellIds[i];
-
-					if (cellId >= cellCount) {
-						continue;
-					}
-
-					const metadata = BB25L.getMetadata(frame, i);
-
-					/*
-					 * Ground is the ONLY thing
-					 * we care about here.
-					 */
-					if (!BB25L.hasGround(metadata)) {
-						continue;
-					}
-
-					const z = BB25L.getGroundZMeters(frame, i);
-
-					const offset = cellId * 4;
-
-					pixels[offset + 0] = 1.0;
-
-					pixels[offset + 1] = z;
-
-					pixels[offset + 2] = 0.0;
-
-					pixels[offset + 3] = 1.0;
-				}
-
-				const texture = new THREE.DataTexture(
-					pixels,
-					width,
-					height,
-					THREE.RGBAFormat,
-					THREE.FloatType,
-				);
-
-				texture.needsUpdate = true;
-
-				texture.magFilter = THREE.NearestFilter;
-
-				texture.minFilter = THREE.NearestFilter;
-
-				texture.wrapS = THREE.ClampToEdgeWrapping;
-
-				texture.wrapT = THREE.ClampToEdgeWrapping;
-
-				texture.generateMipmaps = false;
-
-				return {
-					texture,
-					width,
-					height,
-				};
-			}
 
 			// ============================================================
 			// Load Frame
@@ -646,235 +146,32 @@
 			}
 
 			// ============================================================
-			// Ground Shader
-			// ============================================================
-
-			const vertexShader = /* glsl */ `
-
-			uniform sampler2D uCellLookup;
-
-			uniform float uLookupWidth;
-			uniform float uLookupHeight;
-
-
-			attribute float aCellId;
-
-
-			varying float vGroundPresent;
-
-
-			void main()
-			{
-
-				/*
-				 * Cell IDs are integer values stored
-				 * as floats.
-				 */
-				float cell =
-					aCellId + 0.5;
-
-
-				/*
-				 * Convert linear cell ID into
-				 * lookup texture coordinates.
-				 */
-				float texX =
-					mod(
-						cell,
-						uLookupWidth
-					);
-
-
-				float texY =
-					floor(
-						cell /
-						uLookupWidth
-					);
-
-
-				vec2 uv =
-					vec2(
-						texX /
-						uLookupWidth,
-
-						texY /
-						uLookupHeight
-					);
-
-
-				vec4 cellData =
-					texture2D(
-						uCellLookup,
-						uv
-					);
-
-
-				float occupied =
-					cellData.r;
-
-
-				float groundZ =
-					cellData.g;
-
-
-				vGroundPresent =
-					occupied;
-
-
-				vec3 p =
-					position;
-
-
-				/*
-				 * Apply ground height.
-				 */
-				p.z =
-					groundZ;
-
-
-				/*
-				 * Empty cell:
-				 *
-				 * All three vertices of the triangle
-				 * have the same cell ID, so all three
-				 * collapse together.
-				 *
-				 * This does not affect neighboring
-				 * occupied cells.
-				 */
-				if (
-					occupied < 0.5
-				) {
-
-					p =
-						vec3(
-							0.0,
-							0.0,
-							-10000.0
-						);
-				}
-
-
-				gl_Position =
-					projectionMatrix *
-					modelViewMatrix *
-					vec4(
-						p,
-						1.0
-					);
-			}
-		`;
-
-			const fragmentShader = /* glsl */ `
-
-			varying float vGroundPresent;
-
-
-			void main()
-			{
-
-				if (
-					vGroundPresent < 0.5
-				) {
-
-					discard;
-				}
-
-
-				gl_FragColor =
-					vec4(
-						0.25,
-						0.55,
-						0.75,
-						1.0
-					);
-			}
-		`;
-
-			// ============================================================
 			// Create Ground
 			// ============================================================
 
 			async function createGround() {
 				const frame = await loadFrame();
 
-				const lookup = createCellLookup(frame);
-
-				// --------------------------------------------------------
-				// Geometry
-				// --------------------------------------------------------
-
-				const geometry = new THREE.BufferGeometry();
-
-				geometry.setAttribute(
-					"position",
-					new THREE.Float32BufferAttribute(positions, 3),
-				);
-
-				geometry.setAttribute(
-					"aCellId",
-					new THREE.Float32BufferAttribute(triangleCellIds, 1),
-				);
-
-				/*
-				 * Deliberately NO index buffer.
-				 *
-				 * Every triangle owns its cell ID.
-				 */
-				geometry.computeBoundingSphere();
-
-				// --------------------------------------------------------
-				// Material
-				// --------------------------------------------------------
-
-				const material = new THREE.ShaderMaterial({
-					vertexShader,
-
-					fragmentShader,
-
-					uniforms: {
-						uCellLookup: {
-							value: lookup.texture,
-						},
-
-						uLookupWidth: {
-							value: lookup.width,
-						},
-
-						uLookupHeight: {
-							value: lookup.height,
-						},
-					},
-
-					side: THREE.DoubleSide,
+				const ground = new RadialDisc(radialGrid, {
+					color: 0x4488bb,
 				});
 
-				const ground = new THREE.Mesh(geometry, material);
-
-				scene.add(ground);
+				ground.update(frame, groundSelector);
+				ground.addTo(scene);
 
 				// --------------------------------------------------------
 				// Debug information
 				// --------------------------------------------------------
 
-				const occupied = frame.occupiedCellCount;
-
-				const total = radialGrid.numCells;
-
 				document.getElementById("info").textContent = [
 					"BB25L Ground",
 					"----------------------",
-
-					`Grid cells: ${total.toLocaleString()}`,
-
-					`Occupied BB25L cells: ${occupied.toLocaleString()}`,
-
-					`Mesh vertices: ${(positions.length / 3).toLocaleString()}`,
-
-					`Triangles: ${(triangleCellIds.length / 3).toLocaleString()}`,
-
-					`Lookup texture: ${lookup.width} x ${lookup.height}`,
+					`Grid cells: ${radialGrid.numCells.toLocaleString()}`,
+					`Occupied BB25L cells: ${frame.occupiedCellCount.toLocaleString()}`,
+					`Lookup texture: ${ground.lookup.width} x ${ground.lookup.height}`,
 				].join("\n");
+
+				return ground;
 			}
 
 			// ============================================================
@@ -883,9 +180,7 @@
 
 			window.addEventListener("resize", () => {
 				camera.aspect = window.innerWidth / window.innerHeight;
-
 				camera.updateProjectionMatrix();
-
 				renderer.setSize(window.innerWidth, window.innerHeight);
 			});
 
@@ -895,7 +190,6 @@
 
 			function animate() {
 				requestAnimationFrame(animate);
-
 				renderer.render(scene, camera);
 			}
 
@@ -905,7 +199,6 @@
 
 			try {
 				await createGround();
-
 				animate();
 			} catch (error) {
 				console.error(error);
@@ -913,6 +206,9 @@
 				document.getElementById("info").textContent =
 					"ERROR\n\n" + error.message;
 			}
-		</script>
+		</script> -->
+
+		<!-- <script type="module" src="./js/test.js"></script> -->
+		<script type="module" src="./js/test_layers.js"></script>
 	</body>
 </html>

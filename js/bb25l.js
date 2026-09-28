@@ -56,11 +56,15 @@
  *   bytes 0-1    ground Z              uint16
  *   byte  2      ground delta min      int8
  *   byte  3      ground delta max      int8
- *   bytes 4-5    static height min     uint16
- *   bytes 6-7    static height max     uint16
- *   bytes 8-9    dynamic height min    uint16
- *   bytes 10-11  dynamic height max    uint16
+ *   bytes 4-5    static height min     int16 delta from ground
+ *   bytes 6-7    static height max     int16 delta from ground
+ *   bytes 8-9    dynamic height min    int16 delta from ground
+ *   bytes 10-11  dynamic height max    int16 delta from ground
  *   bytes 12-13  metadata              uint16
+ *
+ * Static and dynamic height getters reconstruct absolute height:
+ *
+ *   absolute height = ground Z + stored delta
  *
  * Metadata:
  *
@@ -418,9 +422,7 @@
 			// ------------------------------------------------
 
 			const hasGround = (metadata & GROUND_PRESENT_BIT) !== 0;
-
 			const hasStatic = (metadata & STATIC_PRESENT_BIT) !== 0;
-
 			const hasDynamic = (metadata & DYNAMIC_PRESENT_BIT) !== 0;
 
 			// ------------------------------------------------
@@ -452,11 +454,11 @@
 					throw new Error(`BB25L: truncated static data at cell ${i}.`);
 				}
 
-				// Static height min, uint16.
+				// Static height min delta, int16, little-endian.
 				data[dataOffset + 4] = bytes[offset + 0];
 				data[dataOffset + 5] = bytes[offset + 1];
 
-				// Static height max, uint16.
+				// Static height max delta, int16, little-endian.
 				data[dataOffset + 6] = bytes[offset + 2];
 				data[dataOffset + 7] = bytes[offset + 3];
 
@@ -472,11 +474,11 @@
 					throw new Error(`BB25L: truncated dynamic data at cell ${i}.`);
 				}
 
-				// Dynamic height min, uint16.
+				// Dynamic height min delta, int16, little-endian.
 				data[dataOffset + 8] = bytes[offset + 0];
 				data[dataOffset + 9] = bytes[offset + 1];
 
-				// Dynamic height max, uint16.
+				// Dynamic height max delta, int16, little-endian.
 				data[dataOffset + 10] = bytes[offset + 2];
 				data[dataOffset + 11] = bytes[offset + 3];
 
@@ -638,6 +640,8 @@
 
 	/**
 	 * Get logical 14-byte cell data.
+	 *
+	 * Stored static/dynamic values remain deltas.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -870,20 +874,24 @@
 	}
 
 	/**
-	 * Read an unsigned uint16 from logical cell data.
+	 * Read a signed int16 from logical cell data.
+	 *
+	 * Static and dynamic heights are stored as signed
+	 * deltas from ground Z.
 	 *
 	 * @param {Uint8Array} data
 	 * @param {number} offset
 	 * @returns {number}
 	 */
-	function readUint16(data, offset) {
-		return data[offset] | (data[offset + 1] << 8);
+	function readInt16(data, offset) {
+		return ((data[offset] | (data[offset + 1] << 8)) << 16) >> 16;
 	}
 
 	/**
 	 * Get static height minimum.
 	 *
-	 * Stored as uint16 centimeters.
+	 * Stored as a signed int16 delta from ground Z.
+	 * Returns the reconstructed absolute height in centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -891,14 +899,16 @@
 	 */
 	function getStaticHeightMin(frame, index) {
 		const offset = index * CELL_DATA_BYTES + 4;
+		const delta = readInt16(frame.data, offset);
 
-		return readUint16(frame.data, offset);
+		return getGroundZ(frame, index) + delta;
 	}
 
 	/**
 	 * Get static height maximum.
 	 *
-	 * Stored as uint16 centimeters.
+	 * Stored as a signed int16 delta from ground Z.
+	 * Returns the reconstructed absolute height in centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -906,14 +916,16 @@
 	 */
 	function getStaticHeightMax(frame, index) {
 		const offset = index * CELL_DATA_BYTES + 6;
+		const delta = readInt16(frame.data, offset);
 
-		return readUint16(frame.data, offset);
+		return getGroundZ(frame, index) + delta;
 	}
 
 	/**
 	 * Get dynamic height minimum.
 	 *
-	 * Stored as uint16 centimeters.
+	 * Stored as a signed int16 delta from ground Z.
+	 * Returns the reconstructed absolute height in centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -921,14 +933,16 @@
 	 */
 	function getDynamicHeightMin(frame, index) {
 		const offset = index * CELL_DATA_BYTES + 8;
+		const delta = readInt16(frame.data, offset);
 
-		return readUint16(frame.data, offset);
+		return getGroundZ(frame, index) + delta;
 	}
 
 	/**
 	 * Get dynamic height maximum.
 	 *
-	 * Stored as uint16 centimeters.
+	 * Stored as a signed int16 delta from ground Z.
+	 * Returns the reconstructed absolute height in centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -936,12 +950,15 @@
 	 */
 	function getDynamicHeightMax(frame, index) {
 		const offset = index * CELL_DATA_BYTES + 10;
+		const delta = readInt16(frame.data, offset);
 
-		return readUint16(frame.data, offset);
+		return getGroundZ(frame, index) + delta;
 	}
 
 	/**
 	 * Get static height minimum in meters.
+	 *
+	 * Returns reconstructed absolute height.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -954,6 +971,8 @@
 	/**
 	 * Get static height maximum in meters.
 	 *
+	 * Returns reconstructed absolute height.
+	 *
 	 * @param {object} frame
 	 * @param {number} index
 	 * @returns {number}
@@ -965,6 +984,8 @@
 	/**
 	 * Get dynamic height minimum in meters.
 	 *
+	 * Returns reconstructed absolute height.
+	 *
 	 * @param {object} frame
 	 * @param {number} index
 	 * @returns {number}
@@ -975,6 +996,8 @@
 
 	/**
 	 * Get dynamic height maximum in meters.
+	 *
+	 * Returns reconstructed absolute height.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -1074,6 +1097,8 @@
 
 		getGroundDeltaMin,
 		getGroundDeltaMax,
+
+		readInt16,
 
 		getStaticHeightMin,
 		getStaticHeightMax,
