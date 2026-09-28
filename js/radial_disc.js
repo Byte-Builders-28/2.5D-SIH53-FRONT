@@ -139,7 +139,7 @@ function ringPoint(radius, angle) {
 // ============================================================
 // Shared Radial Disc Geometry
 //
-// This is created ONCE and reused by all five discs.
+// Created ONCE and reused by all discs (both 2D and 3D).
 // ============================================================
 
 let sharedGeometry = null;
@@ -288,7 +288,7 @@ function createGeometry(radialGrid) {
 	return geometry;
 }
 
-function getSharedGeometry(radialGrid) {
+export function getSharedGeometry(radialGrid) {
 	if (sharedGeometry !== null && sharedGeometryGrid === radialGrid) {
 		return sharedGeometry;
 	}
@@ -305,63 +305,59 @@ function getSharedGeometry(radialGrid) {
 }
 
 // ============================================================
-// Shader
+// Flat Shader
+//
+// RadialDisc is now fundamentally flat.
+//
+// Responsibilities:
+//   - fixed radial geometry (XY only)
+//   - cell IDs via aCellId
+//   - per-cell semantic state lookup (0=empty,1=ground,
+//     2=dynamic,3=static)
+//   - semantic color mapping in fragment shader
+//
+// There is NO height lookup and NO vertex displacement.
+// The 3D height-displacement behavior lives in RadialDisc3D
+// (js/view/radial_disc_3d.js), which is used only by
+// RasterView.
 // ============================================================
 
 const vertexShader = /* glsl */ `
 
-uniform sampler2D uCellLookup;
+uniform sampler2D uCellState;
 
-uniform float uLookupWidth;
-uniform float uLookupHeight;
+uniform float uStateWidth;
+uniform float uStateHeight;
 
 attribute float aCellId;
 
-varying float vPresent;
+varying float vState;
 
 void main()
 {
 	float cell = aCellId + 0.5;
 
 	float texX =
-		mod(cell, uLookupWidth);
+		mod(cell, uStateWidth);
 
 	float texY =
-		floor(cell / uLookupWidth);
+		floor(cell / uStateWidth);
 
 	vec2 uv =
 		vec2(
-			texX / uLookupWidth,
-			texY / uLookupHeight
+			texX / uStateWidth,
+			texY / uStateHeight
 		);
 
-	vec4 cellData =
-		texture2D(
-			uCellLookup,
-			uv
-		);
+	// State is stored in the red channel as a normalised value.
+	// Values: 0=empty, 1=ground, 2=dynamic, 3=static
+	// We store them as 0.0 / 85.0/255.0 / 170.0/255.0 / 1.0
+	// using Uint8 so multiply back: round(r * 255) / 85.
+	// Simpler: store raw 0..3 in float texture (RGBA Float).
+	vState = texture2D(uCellState, uv).r;
 
-	float occupied =
-		cellData.r;
-
-	float height =
-		cellData.g;
-
-	vPresent = occupied;
-
+	// Flat geometry — no height displacement.
 	vec3 p = position;
-
-	p.z = height;
-
-	if (occupied < 0.5)
-	{
-		p =
-			vec3(
-				0.0,
-				0.0,
-				-10000.0
-			);
-	}
 
 	gl_Position =
 		projectionMatrix *
@@ -372,34 +368,54 @@ void main()
 
 const fragmentShader = /* glsl */ `
 
-uniform vec3 uColor;
-
-varying float vPresent;
+varying float vState;
 
 void main()
 {
-	if (vPresent < 0.5)
+	// Round to nearest integer state.
+	int state = int(vState + 0.5);
+
+	// 0 = empty -> discard (transparent)
+	if (state == 0)
 	{
 		discard;
 	}
 
+	vec3 color;
+
+	// 1 = ground  -> green
+	// 2 = dynamic -> red
+	// 3 = static  -> orange
+	if (state == 1)
+	{
+		color = vec3(0.13, 0.70, 0.17);
+	}
+	else if (state == 2)
+	{
+		color = vec3(0.90, 0.18, 0.18);
+	}
+	else
+	{
+		color = vec3(1.00, 0.60, 0.10);
+	}
+
 	gl_FragColor =
-		vec4(
-			uColor,
-			1.0
-		);
+		vec4(color, 1.0);
 }
 `;
 
 // ============================================================
 // RadialDisc
+//
+// Flat 2D radial disc renderer.
+// Geometry is fixed (generated once, never rebuilt per frame).
+// Only the per-cell state texture is updated each frame.
 // ============================================================
 
 export class RadialDisc {
 	constructor(
 		radialGrid,
 		{
-			color = 0x4488bb,
 			position = new THREE.Vector3(),
 			rotation = new THREE.Euler(),
 			visible = true,
@@ -407,35 +423,82 @@ export class RadialDisc {
 	) {
 		this.radialGrid = radialGrid;
 
-		this.lookup = null;
-		this.frame = null;
+		const cellCount = radialGrid.numCells;
+
+		// --------------------------------------------------------
+		// Fixed geometry — generated once from the shared pool.
+		// --------------------------------------------------------
 
 		this.geometry = getSharedGeometry(radialGrid);
+
+		// --------------------------------------------------------
+		// Per-cell state array (CPU side).
+		// Updated each frame from the BB25L sparse record.
+		// 0 = empty, 1 = ground, 2 = dynamic, 3 = static
+		// --------------------------------------------------------
+
+		this.cellState = new Float32Array(cellCount);
+
+		// --------------------------------------------------------
+		// GPU state texture — reused every frame, never recreated.
+		// --------------------------------------------------------
+
+		const stateWidth = Math.min(
+			1024,
+			Math.max(1, Math.ceil(Math.sqrt(cellCount))),
+		);
+		const stateHeight = Math.ceil(cellCount / stateWidth);
+
+		// Float RGBA texture; only the R channel is used.
+		const statePixels = new Float32Array(stateWidth * stateHeight * 4);
+
+		this.stateTexture = new THREE.DataTexture(
+			statePixels,
+			stateWidth,
+			stateHeight,
+			THREE.RGBAFormat,
+			THREE.FloatType,
+		);
+
+		this.stateTexture.magFilter = THREE.NearestFilter;
+		this.stateTexture.minFilter = THREE.NearestFilter;
+		this.stateTexture.wrapS = THREE.ClampToEdgeWrapping;
+		this.stateTexture.wrapT = THREE.ClampToEdgeWrapping;
+		this.stateTexture.generateMipmaps = false;
+
+		this._stateWidth = stateWidth;
+		this._stateHeight = stateHeight;
+		this._statePixels = statePixels;
+
+		// --------------------------------------------------------
+		// Material
+		// --------------------------------------------------------
 
 		this.material = new THREE.ShaderMaterial({
 			vertexShader,
 			fragmentShader,
 
 			uniforms: {
-				uCellLookup: {
-					value: null,
+				uCellState: {
+					value: this.stateTexture,
 				},
 
-				uLookupWidth: {
-					value: 1,
+				uStateWidth: {
+					value: stateWidth,
 				},
 
-				uLookupHeight: {
-					value: 1,
-				},
-
-				uColor: {
-					value: new THREE.Color(color),
+				uStateHeight: {
+					value: stateHeight,
 				},
 			},
 
 			side: THREE.DoubleSide,
+			transparent: false,
 		});
+
+		// --------------------------------------------------------
+		// Mesh — one mesh, never recreated.
+		// --------------------------------------------------------
 
 		this.mesh = new THREE.Mesh(this.geometry, this.material);
 
@@ -468,12 +531,6 @@ export class RadialDisc {
 		return this;
 	}
 
-	setColor(color) {
-		this.material.uniforms.uColor.value.set(color);
-
-		return this;
-	}
-
 	setVisible(visible) {
 		this.mesh.visible = visible;
 
@@ -481,18 +538,29 @@ export class RadialDisc {
 	}
 
 	// --------------------------------------------------------
-	// Create lookup texture for one disc
+	// Update from one BB25L frame
+	//
+	// Semantic priority: static > dynamic > ground > empty
+	//
+	// Metadata bits (BB25L):
+	//   bit 0 = ground present
+	//   bit 1 = static present
+	//   bit 2 = dynamic present
 	// --------------------------------------------------------
 
-	createLookup(frame, selector) {
+	update(frame) {
+		if (!frame) {
+			throw new Error("RadialDisc.update() requires a decoded frame.");
+		}
+
 		const cellCount = this.radialGrid.numCells;
+		const cellState = this.cellState;
+		const pixels = this._statePixels;
 
-		const width = Math.min(1024, Math.max(1, Math.ceil(Math.sqrt(cellCount))));
+		// Reset all cells to empty.
+		cellState.fill(0);
 
-		const height = Math.ceil(cellCount / width);
-
-		const pixels = new Float32Array(width * height * 4);
-
+		// Iterate over occupied cells in the sparse frame.
 		for (let i = 0; i < frame.occupiedCellCount; i++) {
 			const cellId = frame.cellIds[i];
 
@@ -500,83 +568,36 @@ export class RadialDisc {
 				continue;
 			}
 
-			const value = selector(frame, i);
+			const metadata = BB25L.getMetadata(frame, i);
 
-			if (value === null || value === undefined) {
-				continue;
+			// Semantic priority: static (bit 1) > dynamic (bit 2) > ground (bit 0)
+			if (metadata & 2) {
+				// static present
+				cellState[cellId] = 3;
+			} else if (metadata & 4) {
+				// dynamic present
+				cellState[cellId] = 2;
+			} else if (metadata & 1) {
+				// ground present
+				cellState[cellId] = 1;
 			}
-
-			if (!value.present) {
-				continue;
-			}
-
-			const offset = cellId * 4;
-
-			pixels[offset + 0] = 1.0;
-			pixels[offset + 1] = value.z;
-			pixels[offset + 2] = 0.0;
-			pixels[offset + 3] = 1.0;
+			// else: remains 0 (empty)
 		}
 
-		const texture = new THREE.DataTexture(
-			pixels,
-			width,
-			height,
-			THREE.RGBAFormat,
-			THREE.FloatType,
-		);
-
-		texture.needsUpdate = true;
-
-		texture.magFilter = THREE.NearestFilter;
-
-		texture.minFilter = THREE.NearestFilter;
-
-		texture.wrapS = THREE.ClampToEdgeWrapping;
-
-		texture.wrapT = THREE.ClampToEdgeWrapping;
-
-		texture.generateMipmaps = false;
-
-		return {
-			texture,
-			width,
-			height,
-		};
-	}
-
-	// --------------------------------------------------------
-	// Update this disc from one frame
-	// --------------------------------------------------------
-
-	update(frame, selector) {
-		if (typeof selector !== "function") {
-			throw new Error("RadialDisc.update() requires a selector function.");
+		// Copy cellState into the RGBA pixel buffer (R channel only).
+		for (let c = 0; c < cellCount; c++) {
+			pixels[c * 4] = cellState[c];
+			// G, B, A channels are unused (left at 0).
 		}
 
-		const nextLookup = this.createLookup(frame, selector);
-
-		if (this.lookup !== null) {
-			this.lookup.texture.dispose();
-		}
-
-		this.lookup = nextLookup;
-		this.frame = frame;
-
-		this.material.uniforms.uCellLookup.value = nextLookup.texture;
-
-		this.material.uniforms.uLookupWidth.value = nextLookup.width;
-
-		this.material.uniforms.uLookupHeight.value = nextLookup.height;
+		// Upload updated state to GPU.
+		this.stateTexture.needsUpdate = true;
 
 		return this;
 	}
 
 	dispose() {
-		if (this.lookup !== null) {
-			this.lookup.texture.dispose();
-			this.lookup = null;
-		}
+		this.stateTexture.dispose();
 
 		this.material.dispose();
 

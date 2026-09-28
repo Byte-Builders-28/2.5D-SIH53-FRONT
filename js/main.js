@@ -12,6 +12,8 @@ import {
 	RASTER_FRAME_EXTENSION,
 } from "./view/raster_view.js";
 
+import { Raster2DView } from "./view/raster_2d_view.js";
+
 import { Playback } from "./playback.js";
 import { ViewManager } from "./view/view_manager.js";
 
@@ -21,7 +23,8 @@ import { ViewManager } from "./view/view_manager.js";
 
 const INITIAL_FRAME = 0;
 
-const VIEW_RASTER = "raster";
+const VIEW_RASTER    = "raster";
+const VIEW_RASTER_2D = "raster2d";
 const VIEW_POINT_CLOUD = "pointCloud";
 
 // ============================================================
@@ -41,10 +44,10 @@ function createRenderer() {
 }
 
 // ============================================================
-// Camera
+// 3D Camera (perspective, for RasterView)
 // ============================================================
 
-function createCamera() {
+function createCamera3D() {
 	const aspect = window.innerWidth / window.innerHeight;
 
 	const camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 500);
@@ -74,17 +77,27 @@ function createScene() {
 
 class Application {
 	constructor() {
-		this.scene = createScene();
-		this.camera = createCamera();
+		this.scene    = createScene();
 		this.renderer = createRenderer();
-		this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 
-		this.controls.enableDamping = true;
-		this.controls.dampingFactor = 0.08;
+		// ========================================================
+		// 3D camera + controls (perspective, used by RasterView)
+		// ========================================================
 
-		this.controls.target.set(0, 0, 0);
+		this.camera3D = createCamera3D();
 
-		this.controls.update();
+		this.controls3D = new OrbitControls(this.camera3D, this.renderer.domElement);
+
+		this.controls3D.enableDamping = true;
+		this.controls3D.dampingFactor = 0.08;
+
+		this.controls3D.target.set(0, 0, 0);
+		this.controls3D.update();
+
+		// Active camera starts as the 3D perspective camera.
+		this.activeCamera   = this.camera3D;
+		this.activeControls = this.controls3D;
+
 		// ========================================================
 		// Frame Manager
 		// ========================================================
@@ -92,11 +105,11 @@ class Application {
 		this.frameManager = new FrameManager();
 
 		this.frameManager.setSource("raster", {
-			frameCount: RASTER_FRAME_COUNT,
-			frameDirectory: RASTER_FRAME_DIRECTORY,
-			framePrefix: RASTER_FRAME_PREFIX,
-			frameExtension: RASTER_FRAME_EXTENSION,
-			bufferSize: 4,
+			frameCount:      RASTER_FRAME_COUNT,
+			frameDirectory:  RASTER_FRAME_DIRECTORY,
+			framePrefix:     RASTER_FRAME_PREFIX,
+			frameExtension:  RASTER_FRAME_EXTENSION,
+			bufferSize:      4,
 		});
 
 		// ========================================================
@@ -105,9 +118,15 @@ class Application {
 
 		this.viewManager = new ViewManager();
 
+		// 3D raster view — height-displaced five-layer renderer.
 		this.rasterView = new RasterView(this.scene);
 
 		this.viewManager.register(VIEW_RASTER, this.rasterView);
+
+		// 2D raster view — flat top-down semantic renderer.
+		this.raster2DView = new Raster2DView(this.scene, this.renderer);
+
+		this.viewManager.register(VIEW_RASTER_2D, this.raster2DView);
 
 		// Point-cloud view will be registered here later.
 		//
@@ -126,8 +145,8 @@ class Application {
 
 		this.playback = new Playback({
 			frameCount: RASTER_FRAME_COUNT,
-			fps: RASTER_FPS,
-			loop: true,
+			fps:        RASTER_FPS,
+			loop:       true,
 
 			onFrame: (frameIndex) => {
 				console.log("[APP] Displaying frame:", frameIndex);
@@ -160,6 +179,24 @@ class Application {
 
 	setView(name) {
 		this.viewManager.setView(name);
+
+		// Swap camera and controls based on active view.
+		if (name === VIEW_RASTER_2D) {
+			// 2D view uses the orthographic camera owned by Raster2DView.
+			this.activeCamera   = this.raster2DView.camera;
+			this.activeControls = this.raster2DView.controls;
+
+			// Disable the 3D perspective controls while 2D is active.
+			this.controls3D.enabled = false;
+		} else {
+			// All other views (3D raster, point cloud, …) use the
+			// shared perspective camera.
+			this.activeCamera   = this.camera3D;
+			this.activeControls = this.controls3D;
+
+			// Re-enable the 3D controls.
+			this.controls3D.enabled = true;
+		}
 
 		return this;
 	}
@@ -233,9 +270,12 @@ class Application {
 	}
 
 	_resize() {
-		this.camera.aspect = window.innerWidth / window.innerHeight;
+		// Update 3D perspective camera.
+		this.camera3D.aspect = window.innerWidth / window.innerHeight;
+		this.camera3D.updateProjectionMatrix();
 
-		this.camera.updateProjectionMatrix();
+		// Update 2D orthographic camera.
+		this.raster2DView.onResize();
 
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 	}
@@ -265,9 +305,12 @@ class Application {
 	_animate = (timestamp) => {
 		this.playback.update(timestamp);
 
-		this.controls.update();
+		// Update only the currently-active controls so damping
+		// does not interfere with the inactive view's controls.
+		this.activeControls.update();
 
-		this.renderer.render(this.scene, this.camera);
+		// Render with whichever camera is currently active.
+		this.renderer.render(this.scene, this.activeCamera);
 
 		requestAnimationFrame(this._animate);
 	};
@@ -281,7 +324,15 @@ class Application {
 	}
 
 	getCamera() {
-		return this.camera;
+		return this.activeCamera;
+	}
+
+	getCamera3D() {
+		return this.camera3D;
+	}
+
+	getCamera2D() {
+		return this.raster2DView.camera;
 	}
 
 	getRenderer() {
@@ -300,6 +351,10 @@ class Application {
 		return this.rasterView;
 	}
 
+	getRaster2DView() {
+		return this.raster2DView;
+	}
+
 	getPlayback() {
 		return this.playback;
 	}
@@ -316,10 +371,13 @@ class Application {
 		this.frameManager.dispose();
 
 		this.renderer.dispose();
-		this.controls.dispose();
+
+		this.controls3D.dispose();
 
 		if (this.renderer.domElement.parentNode) {
-			this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+			this.renderer.domElement.parentNode.removeChild(
+				this.renderer.domElement,
+			);
 		}
 	}
 }

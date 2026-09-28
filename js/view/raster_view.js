@@ -1,4 +1,5 @@
-import { RadialBand, RadialGrid, RadialDisc } from "../radial_disc.js";
+import { RadialBand, RadialGrid } from "../radial_disc.js";
+import { RadialDisc3D } from "./radial_disc_3d.js";
 
 // ============================================================
 // Configuration
@@ -29,6 +30,9 @@ export function createRasterGrid() {
 
 // ============================================================
 // Layer Selectors
+//
+// These selectors feed the 3D height-displacement renderer.
+// They extract a single Z value per disc per occupied cell.
 // ============================================================
 
 function groundSelector(frame, index) {
@@ -98,6 +102,13 @@ function dynamicMaxSelector(frame, index) {
 
 // ============================================================
 // Raster View
+//
+// 3D height-displaced raster using five RadialDisc3D layers:
+//   ground      - ground Z surface
+//   staticMin   - bottom of static objects
+//   staticMax   - top of static objects
+//   dynamicMin  - bottom of dynamic objects
+//   dynamicMax  - top of dynamic objects
 // ============================================================
 
 export class RasterView {
@@ -106,23 +117,23 @@ export class RasterView {
 
 		this.grid = createRasterGrid();
 
-		this.ground = new RadialDisc(this.grid, {
+		this.ground = new RadialDisc3D(this.grid, {
 			color: 0x4488bb,
 		});
 
-		this.staticMin = new RadialDisc(this.grid, {
+		this.staticMin = new RadialDisc3D(this.grid, {
 			color: 0x777777,
 		});
 
-		this.staticMax = new RadialDisc(this.grid, {
+		this.staticMax = new RadialDisc3D(this.grid, {
 			color: 0xbbbbbb,
 		});
 
-		this.dynamicMin = new RadialDisc(this.grid, {
+		this.dynamicMin = new RadialDisc3D(this.grid, {
 			color: 0xcc6633,
 		});
 
-		this.dynamicMax = new RadialDisc(this.grid, {
+		this.dynamicMax = new RadialDisc3D(this.grid, {
 			color: 0xffaa44,
 		});
 
