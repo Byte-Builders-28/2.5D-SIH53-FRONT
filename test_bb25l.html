@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>BB25L Frame Inspector</title>
+
+		<style>
+			:root {
+				color-scheme: dark;
+				font-family:
+					Inter,
+					system-ui,
+					-apple-system,
+					BlinkMacSystemFont,
+					"Segoe UI",
+					sans-serif;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				padding: 24px;
+				background: #111;
+				color: #ddd;
+			}
+
+			h1,
+			h2 {
+				margin: 0 0 12px;
+			}
+
+			h1 {
+				font-size: 24px;
+			}
+
+			h2 {
+				margin-top: 28px;
+				font-size: 17px;
+				color: #fff;
+			}
+
+			pre {
+				margin: 0;
+				padding: 14px;
+				overflow-x: auto;
+				background: #181818;
+				border: 1px solid #2a2a2a;
+				border-radius: 6px;
+				line-height: 1.5;
+			}
+
+			.controls {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+				margin-bottom: 16px;
+			}
+
+			select,
+			button {
+				padding: 8px 10px;
+				border: 1px solid #333;
+				border-radius: 5px;
+				background: #1c1c1c;
+				color: #ddd;
+				font: inherit;
+			}
+
+			button {
+				cursor: pointer;
+			}
+
+			button:hover {
+				background: #252525;
+			}
+
+			.summary {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+				gap: 10px;
+				margin-bottom: 16px;
+			}
+
+			.card {
+				padding: 12px;
+				background: #181818;
+				border: 1px solid #2a2a2a;
+				border-radius: 6px;
+			}
+
+			.card-title {
+				margin-bottom: 8px;
+				color: #fff;
+				font-weight: 600;
+			}
+
+			.card-row {
+				display: flex;
+				justify-content: space-between;
+				gap: 12px;
+				margin: 3px 0;
+				color: #aaa;
+			}
+
+			.card-row strong {
+				color: #ddd;
+				font-weight: 500;
+			}
+
+			.cell {
+				margin-bottom: 10px;
+				padding: 12px;
+				background: #181818;
+				border: 1px solid #292929;
+				border-radius: 6px;
+			}
+
+			.cell-header {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 16px;
+				margin-bottom: 8px;
+				color: #fff;
+			}
+
+			.category {
+				margin-top: 8px;
+				padding: 8px 10px;
+				background: #141414;
+				border-left: 3px solid #444;
+			}
+
+			.category-title {
+				margin-bottom: 4px;
+				color: #fff;
+				font-weight: 600;
+			}
+
+			.value {
+				font-family: Consolas, "Courier New", monospace;
+			}
+
+			.meta {
+				margin-top: 8px;
+				color: #777;
+				font-size: 12px;
+			}
+
+			.empty {
+				padding: 20px;
+				background: #181818;
+				border: 1px solid #2a2a2a;
+				border-radius: 6px;
+				color: #888;
+			}
+		</style>
+	</head>
+
+	<body>
+		<h1>BB25L Frame Inspector</h1>
+
+		<h2>Frame</h2>
+		<pre id="stats">Loading...</pre>
+
+		<h2>Timing</h2>
+		<pre id="timing">Loading...</pre>
+
+		<h2>Cell Data</h2>
+
+		<div class="controls">
+			<select id="category">
+				<option value="all">All</option>
+				<option value="ground">Ground</option>
+				<option value="static">Static</option>
+				<option value="dynamic">Dynamic</option>
+			</select>
+
+			<select id="sort">
+				<option value="cell">Cell ID</option>
+				<option value="z-asc">Z / Height ascending</option>
+				<option value="z-desc">Z / Height descending</option>
+			</select>
+
+			<button id="apply">Apply</button>
+		</div>
+
+		<div id="summary" class="summary"></div>
+		<div id="cells"></div>
+
+		<script src="./js/fzstd.js"></script>
+		<script src="./js/bb25l.js"></script>
+
+		<script>
+			const FRAME_URL = "./data/raster/frame_0532.bb25l";
+
+			const HEIGHT_SCALE = 0.01;
+
+			let frame = null;
+			let cells = [];
+
+			// ============================================================
+			// Helpers
+			// ============================================================
+
+			function formatNumber(value, digits = 3) {
+				if (value === null || value === undefined || !Number.isFinite(value)) {
+					return "-";
+				}
+
+				return value.toFixed(digits);
+			}
+
+			function formatMs(value) {
+				return `${value.toFixed(3)} ms`;
+			}
+
+			function hasFinite(value) {
+				return Number.isFinite(value);
+			}
+
+			function heightToMeters(value) {
+				if (!Number.isFinite(value)) {
+					return NaN;
+				}
+
+				return value * HEIGHT_SCALE;
+			}
+
+			// ============================================================
+			// Cell decoding
+			// ============================================================
+
+			function inspectCell(frame, index) {
+				const cellId = frame.cellIds[index];
+				const metadata = BB25L.getMetadata(frame, index);
+
+				const cell = {
+					index,
+					cellId,
+					metadata,
+
+					ground: null,
+					static: null,
+					dynamic: null,
+				};
+
+				// --------------------------------------------------------
+				// Ground
+				// --------------------------------------------------------
+
+				if (BB25L.hasGround(metadata)) {
+					cell.ground = {
+						z: BB25L.getGroundZMeters(frame, index),
+					};
+				}
+
+				// --------------------------------------------------------
+				// Static
+				// --------------------------------------------------------
+
+				if (BB25L.hasStatic(metadata)) {
+					cell.static = {
+						heightMin: heightToMeters(BB25L.getStaticHeightMin(frame, index)),
+						heightMax: heightToMeters(BB25L.getStaticHeightMax(frame, index)),
+					};
+				}
+
+				// --------------------------------------------------------
+				// Dynamic
+				// --------------------------------------------------------
+
+				if (BB25L.hasDynamic(metadata)) {
+					cell.dynamic = {
+						heightMin: heightToMeters(BB25L.getDynamicHeightMin(frame, index)),
+						heightMax: heightToMeters(BB25L.getDynamicHeightMax(frame, index)),
+					};
+				}
+
+				return cell;
+			}
+
+			function decodeCells(frame) {
+				const result = [];
+
+				for (let i = 0; i < frame.occupiedCellCount; i++) {
+					result.push(inspectCell(frame, i));
+				}
+
+				return result;
+			}
+
+			// ============================================================
+			// Category access
+			// ============================================================
+
+			function getCategoryValue(cell, category) {
+				if (category === "ground") {
+					if (!cell.ground) {
+						return null;
+					}
+
+					return cell.ground.z;
+				}
+
+				if (category === "static") {
+					if (!cell.static) {
+						return null;
+					}
+
+					// Sort static cells by their minimum height.
+					return cell.static.heightMin;
+				}
+
+				if (category === "dynamic") {
+					if (!cell.dynamic) {
+						return null;
+					}
+
+					// Sort dynamic cells by their minimum height.
+					return cell.dynamic.heightMin;
+				}
+
+				return null;
+			}
+
+			function hasCategory(cell, category) {
+				if (category === "ground") {
+					return cell.ground !== null;
+				}
+
+				if (category === "static") {
+					return cell.static !== null;
+				}
+
+				if (category === "dynamic") {
+					return cell.dynamic !== null;
+				}
+
+				return (
+					cell.ground !== null || cell.static !== null || cell.dynamic !== null
+				);
+			}
+
+			// ============================================================
+			// Sorting
+			// ============================================================
+
+			function sortCells(input, category, sortMode) {
+				const result = [...input];
+
+				if (sortMode === "cell") {
+					result.sort((a, b) => a.cellId - b.cellId);
+					return result;
+				}
+
+				result.sort((a, b) => {
+					const za = getCategoryValue(a, category);
+					const zb = getCategoryValue(b, category);
+
+					if (za === null && zb === null) {
+						return a.cellId - b.cellId;
+					}
+
+					if (za === null) {
+						return 1;
+					}
+
+					if (zb === null) {
+						return -1;
+					}
+
+					if (sortMode === "z-asc") {
+						return za - zb;
+					}
+
+					return zb - za;
+				});
+
+				return result;
+			}
+
+			// ============================================================
+			// Statistics
+			// ============================================================
+
+			function getCategoryStats(category) {
+				const values = [];
+
+				for (const cell of cells) {
+					if (category === "ground" && cell.ground) {
+						if (hasFinite(cell.ground.z)) {
+							values.push(cell.ground.z);
+						}
+					}
+
+					if (category === "static" && cell.static) {
+						if (hasFinite(cell.static.heightMin)) {
+							values.push(cell.static.heightMin);
+						}
+
+						if (hasFinite(cell.static.heightMax)) {
+							values.push(cell.static.heightMax);
+						}
+					}
+
+					if (category === "dynamic" && cell.dynamic) {
+						if (hasFinite(cell.dynamic.heightMin)) {
+							values.push(cell.dynamic.heightMin);
+						}
+
+						if (hasFinite(cell.dynamic.heightMax)) {
+							values.push(cell.dynamic.heightMax);
+						}
+					}
+				}
+
+				if (values.length === 0) {
+					return null;
+				}
+
+				let min = Infinity;
+				let max = -Infinity;
+				let sum = 0;
+
+				for (const value of values) {
+					min = Math.min(min, value);
+					max = Math.max(max, value);
+					sum += value;
+				}
+
+				return {
+					count: values.length,
+					min,
+					max,
+					mean: sum / values.length,
+				};
+			}
+
+			function getCategoryCellCount(category) {
+				let count = 0;
+
+				for (const cell of cells) {
+					if (hasCategory(cell, category)) {
+						count++;
+					}
+				}
+
+				return count;
+			}
+
+			// ============================================================
+			// Summary
+			// ============================================================
+
+			function createSummary() {
+				const summary = document.getElementById("summary");
+
+				const categories = [
+					{
+						id: "ground",
+						title: "Ground",
+						valueLabel: "Z",
+					},
+					{
+						id: "static",
+						title: "Static",
+						valueLabel: "Height",
+					},
+					{
+						id: "dynamic",
+						title: "Dynamic",
+						valueLabel: "Height",
+					},
+				];
+
+				summary.innerHTML = "";
+
+				for (const category of categories) {
+					const stats = getCategoryStats(category.id);
+					const cellCount = getCategoryCellCount(category.id);
+
+					const card = document.createElement("div");
+					card.className = "card";
+
+					if (!stats) {
+						card.innerHTML = `
+							<div class="card-title">${category.title}</div>
+							<div class="card-row">
+								<span>Cells</span>
+								<strong>${cellCount}</strong>
+							</div>
+							<div class="card-row">
+								<span>Values</span>
+								<strong>None</strong>
+							</div>
+						`;
+
+						summary.appendChild(card);
+						continue;
+					}
+
+					card.innerHTML = `
+						<div class="card-title">${category.title}</div>
+
+						<div class="card-row">
+							<span>Cells</span>
+							<strong>${cellCount}</strong>
+						</div>
+
+						<div class="card-row">
+							<span>Values</span>
+							<strong>${stats.count}</strong>
+						</div>
+
+						<div class="card-row">
+							<span>Min ${category.valueLabel}</span>
+							<strong>${formatNumber(stats.min)} m</strong>
+						</div>
+
+						<div class="card-row">
+							<span>Max ${category.valueLabel}</span>
+							<strong>${formatNumber(stats.max)} m</strong>
+						</div>
+
+						<div class="card-row">
+							<span>Mean</span>
+							<strong>${formatNumber(stats.mean)} m</strong>
+						</div>
+					`;
+
+					summary.appendChild(card);
+				}
+			}
+
+			// ============================================================
+			// Cell rendering
+			// ============================================================
+
+			function renderGround(cell) {
+				if (!cell.ground) {
+					return "";
+				}
+
+				return `
+					<div class="category">
+						<div class="category-title">Ground</div>
+
+						<div>
+							Z:
+							<span class="value">
+								${formatNumber(cell.ground.z)} m
+							</span>
+						</div>
+					</div>
+				`;
+			}
+
+			function renderStatic(cell) {
+				if (!cell.static) {
+					return "";
+				}
+
+				return `
+					<div class="category">
+						<div class="category-title">Static</div>
+
+						<div>
+							Height min:
+							<span class="value">
+								${formatNumber(cell.static.heightMin)} m
+							</span>
+						</div>
+
+						<div>
+							Height max:
+							<span class="value">
+								${formatNumber(cell.static.heightMax)} m
+							</span>
+						</div>
+					</div>
+				`;
+			}
+
+			function renderDynamic(cell) {
+				if (!cell.dynamic) {
+					return "";
+				}
+
+				return `
+					<div class="category">
+						<div class="category-title">Dynamic</div>
+
+						<div>
+							Height min:
+							<span class="value">
+								${formatNumber(cell.dynamic.heightMin)} m
+							</span>
+						</div>
+
+						<div>
+							Height max:
+							<span class="value">
+								${formatNumber(cell.dynamic.heightMax)} m
+							</span>
+						</div>
+					</div>
+				`;
+			}
+
+			function renderCell(cell, category) {
+				let content = "";
+
+				if (category === "all" || category === "ground") {
+					content += renderGround(cell);
+				}
+
+				if (category === "all" || category === "static") {
+					content += renderStatic(cell);
+				}
+
+				if (category === "all" || category === "dynamic") {
+					content += renderDynamic(cell);
+				}
+
+				if (!content) {
+					return "";
+				}
+
+				return `
+					<div class="cell">
+						<div class="cell-header">
+							<strong>Cell ${cell.cellId}</strong>
+							<span>Index ${cell.index}</span>
+						</div>
+
+						${content}
+
+						<div class="meta">
+							Metadata: 0x${cell.metadata.toString(16).padStart(2, "0")}
+						</div>
+					</div>
+				`;
+			}
+
+			// ============================================================
+			// Render
+			// ============================================================
+
+			function render() {
+				const category = document.getElementById("category").value;
+				const sortMode = document.getElementById("sort").value;
+				const container = document.getElementById("cells");
+
+				const filtered = cells.filter((cell) => hasCategory(cell, category));
+
+				const sorted = sortCells(filtered, category, sortMode);
+
+				if (sorted.length === 0) {
+					container.innerHTML = `
+						<div class="empty">
+							No cells contain the selected category.
+						</div>
+					`;
+
+					return;
+				}
+
+				container.innerHTML = sorted
+					.map((cell) => renderCell(cell, category))
+					.join("");
+			}
+
+			// ============================================================
+			// Controls
+			// ============================================================
+
+			document.getElementById("apply").addEventListener("click", render);
+
+			document.getElementById("category").addEventListener("change", render);
+
+			document.getElementById("sort").addEventListener("change", render);
+
+			// ============================================================
+			// Main
+			// ============================================================
+
+			async function main() {
+				try {
+					const decodeStart = performance.now();
+
+					frame = await BB25L.load(FRAME_URL);
+
+					const decodeEnd = performance.now();
+					const decodeTime = decodeEnd - decodeStart;
+
+					const stats = BB25L.getStats(frame);
+					const occupied = frame.occupiedCellCount;
+
+					document.getElementById("stats").textContent = JSON.stringify(
+						{
+							file: FRAME_URL,
+							version: BB25L.VERSION,
+							occupiedCells: occupied,
+							...stats,
+						},
+						null,
+						2,
+					);
+
+					cells = decodeCells(frame);
+
+					const cellDecodeEnd = performance.now();
+					const cellDecodeTime = cellDecodeEnd - decodeEnd;
+
+					document.getElementById("timing").textContent = [
+						`BB25L.load():       ${formatMs(decodeTime)}`,
+						`Cell inspection:    ${formatMs(cellDecodeTime)}`,
+						`Total:               ${formatMs(cellDecodeEnd - decodeStart)}`,
+						"",
+						`Cells:              ${occupied.toLocaleString()}`,
+						`Decode throughput:  ${
+							decodeTime > 0
+								? Math.round(occupied / (decodeTime / 1000)).toLocaleString()
+								: "-"
+						} cells/sec`,
+					].join("\n");
+
+					createSummary();
+					render();
+
+					console.log("BB25L frame:", frame);
+					console.log("Decoded cells:", cells);
+				} catch (error) {
+					console.error(error);
+
+					document.getElementById("stats").textContent =
+						"Failed to load frame.";
+
+					document.getElementById("timing").textContent =
+						error.stack || String(error);
+
+					document.getElementById("cells").innerHTML = `
+						<div class="empty">
+							${String(error)}
+						</div>
+					`;
+				}
+			}
+
+			main();
+		</script>
+	</body>
+</html>

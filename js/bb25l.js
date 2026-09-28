@@ -29,7 +29,7 @@
  *
  * `data` is logically:
  *
- *   [cell0 10 bytes][cell1 10 bytes]...[cellN 10 bytes]
+ *   [cell0 14 bytes][cell1 14 bytes]...[cellN 14 bytes]
  *
  * It matches the RadialRasterizer output layout.
  *
@@ -48,19 +48,19 @@
  *   varuint cell-id/delta
  *   uint16 metadata
  *   optional ground   4 bytes
- *   optional static   2 bytes
- *   optional dynamic  2 bytes
+ *   optional static   4 bytes
+ *   optional dynamic  4 bytes
  *
  * Logical cell data:
  *
- *   bytes 0-1   ground Z              uint16
- *   byte  2     ground delta min      int8
- *   byte  3     ground delta max      int8
- *   byte  4     static height min     uint8
- *   byte  5     static height max     uint8
- *   byte  6     dynamic height min    uint8
- *   byte  7     dynamic height max    uint8
- *   bytes 8-9   metadata              uint16
+ *   bytes 0-1    ground Z              uint16
+ *   byte  2      ground delta min      int8
+ *   byte  3      ground delta max      int8
+ *   bytes 4-5    static height min     uint16
+ *   bytes 6-7    static height max     uint16
+ *   bytes 8-9    dynamic height min    uint16
+ *   bytes 10-11  dynamic height max    uint16
+ *   bytes 12-13  metadata              uint16
  *
  * Metadata:
  *
@@ -83,7 +83,12 @@
 
 	const VERSION = 3;
 	const HEADER_SIZE = 12;
-	const CELL_DATA_BYTES = 10;
+	const CELL_DATA_BYTES = 14;
+
+	const GROUND_DATA_BYTES = 4;
+	const STATIC_DATA_BYTES = 4;
+	const DYNAMIC_DATA_BYTES = 4;
+	const METADATA_BYTES = 2;
 
 	const GROUND_PRESENT_BIT = 1 << 0;
 	const STATIC_PRESENT_BIT = 1 << 1;
@@ -345,8 +350,8 @@
 
 		// Logical RadialRasterizer-style output:
 		//
-		//   cell 0 = bytes 0..9
-		//   cell 1 = bytes 10..19
+		//   cell 0 = bytes 0..13
+		//   cell 1 = bytes 14..27
 		//   ...
 		//
 		const data = new Uint8Array(count * CELL_DATA_BYTES);
@@ -394,19 +399,19 @@
 			// Metadata
 			// ------------------------------------------------
 
-			if (offset + 2 > bytes.length) {
+			if (offset + METADATA_BYTES > bytes.length) {
 				throw new Error(`BB25L: truncated metadata at cell ${i}.`);
 			}
 
 			const metadata = view.getUint16(offset, true);
 
-			offset += 2;
+			offset += METADATA_BYTES;
 
 			const dataOffset = i * CELL_DATA_BYTES;
 
-			// Metadata occupies bytes 8-9.
-			data[dataOffset + 8] = metadata & 0xff;
-			data[dataOffset + 9] = metadata >>> 8;
+			// Metadata occupies bytes 12-13.
+			data[dataOffset + 12] = metadata & 0xff;
+			data[dataOffset + 13] = metadata >>> 8;
 
 			// ------------------------------------------------
 			// Presence bits
@@ -423,7 +428,7 @@
 			// ------------------------------------------------
 
 			if (hasGround) {
-				if (offset + 4 > bytes.length) {
+				if (offset + GROUND_DATA_BYTES > bytes.length) {
 					throw new Error(`BB25L: truncated ground data at cell ${i}.`);
 				}
 
@@ -435,7 +440,7 @@
 				data[dataOffset + 2] = bytes[offset + 2];
 				data[dataOffset + 3] = bytes[offset + 3];
 
-				offset += 4;
+				offset += GROUND_DATA_BYTES;
 			}
 
 			// ------------------------------------------------
@@ -443,14 +448,19 @@
 			// ------------------------------------------------
 
 			if (hasStatic) {
-				if (offset + 2 > bytes.length) {
+				if (offset + STATIC_DATA_BYTES > bytes.length) {
 					throw new Error(`BB25L: truncated static data at cell ${i}.`);
 				}
 
+				// Static height min, uint16.
 				data[dataOffset + 4] = bytes[offset + 0];
 				data[dataOffset + 5] = bytes[offset + 1];
 
-				offset += 2;
+				// Static height max, uint16.
+				data[dataOffset + 6] = bytes[offset + 2];
+				data[dataOffset + 7] = bytes[offset + 3];
+
+				offset += STATIC_DATA_BYTES;
 			}
 
 			// ------------------------------------------------
@@ -458,14 +468,19 @@
 			// ------------------------------------------------
 
 			if (hasDynamic) {
-				if (offset + 2 > bytes.length) {
+				if (offset + DYNAMIC_DATA_BYTES > bytes.length) {
 					throw new Error(`BB25L: truncated dynamic data at cell ${i}.`);
 				}
 
-				data[dataOffset + 6] = bytes[offset + 0];
-				data[dataOffset + 7] = bytes[offset + 1];
+				// Dynamic height min, uint16.
+				data[dataOffset + 8] = bytes[offset + 0];
+				data[dataOffset + 9] = bytes[offset + 1];
 
-				offset += 2;
+				// Dynamic height max, uint16.
+				data[dataOffset + 10] = bytes[offset + 2];
+				data[dataOffset + 11] = bytes[offset + 3];
+
+				offset += DYNAMIC_DATA_BYTES;
 			}
 		}
 
@@ -622,7 +637,7 @@
 	// ========================================================
 
 	/**
-	 * Get logical 10-byte cell data.
+	 * Get logical 14-byte cell data.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
@@ -686,7 +701,7 @@
 	 * @returns {number}
 	 */
 	function getMetadata(frame, index) {
-		const offset = index * CELL_DATA_BYTES + 8;
+		const offset = index * CELL_DATA_BYTES + 12;
 
 		return frame.data[offset] | (frame.data[offset + 1] << 8);
 	}
@@ -855,47 +870,118 @@
 	}
 
 	/**
+	 * Read an unsigned uint16 from logical cell data.
+	 *
+	 * @param {Uint8Array} data
+	 * @param {number} offset
+	 * @returns {number}
+	 */
+	function readUint16(data, offset) {
+		return data[offset] | (data[offset + 1] << 8);
+	}
+
+	/**
 	 * Get static height minimum.
+	 *
+	 * Stored as uint16 centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
 	 * @returns {number}
 	 */
 	function getStaticHeightMin(frame, index) {
-		return frame.data[index * CELL_DATA_BYTES + 4];
+		const offset = index * CELL_DATA_BYTES + 4;
+
+		return readUint16(frame.data, offset);
 	}
 
 	/**
 	 * Get static height maximum.
+	 *
+	 * Stored as uint16 centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
 	 * @returns {number}
 	 */
 	function getStaticHeightMax(frame, index) {
-		return frame.data[index * CELL_DATA_BYTES + 5];
+		const offset = index * CELL_DATA_BYTES + 6;
+
+		return readUint16(frame.data, offset);
 	}
 
 	/**
 	 * Get dynamic height minimum.
+	 *
+	 * Stored as uint16 centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
 	 * @returns {number}
 	 */
 	function getDynamicHeightMin(frame, index) {
-		return frame.data[index * CELL_DATA_BYTES + 6];
+		const offset = index * CELL_DATA_BYTES + 8;
+
+		return readUint16(frame.data, offset);
 	}
 
 	/**
 	 * Get dynamic height maximum.
+	 *
+	 * Stored as uint16 centimeters.
 	 *
 	 * @param {object} frame
 	 * @param {number} index
 	 * @returns {number}
 	 */
 	function getDynamicHeightMax(frame, index) {
-		return frame.data[index * CELL_DATA_BYTES + 7];
+		const offset = index * CELL_DATA_BYTES + 10;
+
+		return readUint16(frame.data, offset);
+	}
+
+	/**
+	 * Get static height minimum in meters.
+	 *
+	 * @param {object} frame
+	 * @param {number} index
+	 * @returns {number}
+	 */
+	function getStaticHeightMinMeters(frame, index) {
+		return getStaticHeightMin(frame, index) * 0.01;
+	}
+
+	/**
+	 * Get static height maximum in meters.
+	 *
+	 * @param {object} frame
+	 * @param {number} index
+	 * @returns {number}
+	 */
+	function getStaticHeightMaxMeters(frame, index) {
+		return getStaticHeightMax(frame, index) * 0.01;
+	}
+
+	/**
+	 * Get dynamic height minimum in meters.
+	 *
+	 * @param {object} frame
+	 * @param {number} index
+	 * @returns {number}
+	 */
+	function getDynamicHeightMinMeters(frame, index) {
+		return getDynamicHeightMin(frame, index) * 0.01;
+	}
+
+	/**
+	 * Get dynamic height maximum in meters.
+	 *
+	 * @param {object} frame
+	 * @param {number} index
+	 * @returns {number}
+	 */
+	function getDynamicHeightMaxMeters(frame, index) {
+		return getDynamicHeightMax(frame, index) * 0.01;
 	}
 
 	// ========================================================
@@ -942,6 +1028,11 @@
 		HEADER_SIZE,
 		CELL_DATA_BYTES,
 
+		GROUND_DATA_BYTES,
+		STATIC_DATA_BYTES,
+		DYNAMIC_DATA_BYTES,
+		METADATA_BYTES,
+
 		GROUND_PRESENT_BIT,
 		STATIC_PRESENT_BIT,
 		DYNAMIC_PRESENT_BIT,
@@ -986,9 +1077,13 @@
 
 		getStaticHeightMin,
 		getStaticHeightMax,
+		getStaticHeightMinMeters,
+		getStaticHeightMaxMeters,
 
 		getDynamicHeightMin,
 		getDynamicHeightMax,
+		getDynamicHeightMinMeters,
+		getDynamicHeightMaxMeters,
 
 		getStats,
 	});

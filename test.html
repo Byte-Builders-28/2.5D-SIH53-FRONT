@@ -2,7 +2,7 @@
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
-		<title>Radial Grid Triangles</title>
+		<title>Radial Grid Stitched Mesh</title>
 
 		<style>
 			html,
@@ -124,34 +124,12 @@
 						);
 
 						band.ring_count = ringCount;
-
 						band.actual_resolution = actualResolution;
-
 						band.angular_sectors = angularSectors;
-
 						band.cell_count = ringCount * angularSectors;
 
 						this.numCells += band.cell_count;
 					}
-				}
-
-				describe() {
-					console.log("[RADIAL GRID]");
-
-					for (let i = 0; i < this.bands.length; i++) {
-						const band = this.bands[i];
-
-						console.log(
-							`B${i}: ` +
-								`${band.start.toFixed(2)}-${band.end.toFixed(2)} m | ` +
-								`dr=${band.actual_resolution.toFixed(3)} | ` +
-								`rings=${band.ring_count} | ` +
-								`sectors=${band.angular_sectors} | ` +
-								`cells=${band.cell_count}`,
-						);
-					}
-
-					console.log(`Total cells: ${this.numCells}`);
 				}
 			}
 
@@ -162,53 +140,302 @@
 			const radialGrid = new RadialGrid(
 				[
 					new RadialBand(0.0, 10.0, 0.3),
-
 					new RadialBand(10.0, 30.0, 0.45),
-
 					new RadialBand(30.0, 60.0, 0.7),
-
 					new RadialBand(60.0, 100.0, 1.0),
 				],
 				1.0,
 			);
 
-			radialGrid.describe();
+			console.log("[RADIAL GRID]");
+
+			for (let i = 0; i < radialGrid.bands.length; i++) {
+				const band = radialGrid.bands[i];
+
+				console.log(
+					`B${i}: ` +
+						`${band.start.toFixed(2)}-${band.end.toFixed(2)} m | ` +
+						`dr=${band.actual_resolution.toFixed(3)} | ` +
+						`rings=${band.ring_count} | ` +
+						`sectors=${band.angular_sectors} | ` +
+						`cells=${band.cell_count}`,
+				);
+			}
+
+			console.log(`Total cells: ${radialGrid.numCells}`);
 
 			// ============================================================
-			// Mesh Generation
+			// Mesh Storage
 			// ============================================================
 
 			const vertices = [];
 			const indices = [];
 
-			function addVertex(radius, theta) {
-				const x = radius * Math.cos(theta);
+			// ============================================================
+			// Vertex Map
+			// ============================================================
 
-				const y = radius * Math.sin(theta);
+			const vertexMap = new Map();
+
+			function normalizeAngle(angle) {
+				angle %= TAU;
+
+				if (angle < 0) {
+					angle += TAU;
+				}
+
+				return angle;
+			}
+
+			function angleKey(angle) {
+				return Math.round(normalizeAngle(angle) * 1e10);
+			}
+
+			function vertexKey(radius, angle) {
+				return `${Math.round(radius * 1e8)}:` + `${angleKey(angle)}`;
+			}
+
+			function addVertex(radius, angle) {
+				const normalizedAngle = normalizeAngle(angle);
+
+				const key = vertexKey(radius, normalizedAngle);
+
+				const existing = vertexMap.get(key);
+
+				if (existing !== undefined) {
+					return existing;
+				}
 
 				const index = vertices.length / 3;
 
-				vertices.push(x, y, 0);
+				vertices.push(
+					radius * Math.cos(normalizedAngle),
+					radius * Math.sin(normalizedAngle),
+					0,
+				);
+
+				vertexMap.set(key, index);
 
 				return index;
 			}
 
 			// ============================================================
-			// Generate Each Band Independently
+			// Angular Samples
+			// ============================================================
+
+			function getBandAngles(band) {
+				const angles = [];
+
+				for (let sector = 0; sector < band.angular_sectors; sector++) {
+					angles.push((sector / band.angular_sectors) * TAU);
+				}
+
+				return angles;
+			}
+
+			function mergeAngles(...angleLists) {
+				const map = new Map();
+
+				for (const list of angleLists) {
+					for (const angle of list) {
+						const normalized = normalizeAngle(angle);
+
+						map.set(angleKey(normalized), normalized);
+					}
+				}
+
+				return [...map.values()].sort((a, b) => a - b);
+			}
+
+			// ============================================================
+			// Shared Band Boundaries
 			// ============================================================
 			//
-			// IMPORTANT:
+			// A transition gets the union of the angular vertices
+			// from both neighboring bands.
 			//
-			// A band has its own angular sector count.
+			// This creates a denser shared ring at:
 			//
-			// B0: 107 sectors
-			// B1: 283 sectors
-			// B2: 406 sectors
-			// B3: 503 sectors
+			//     10m
+			//     30m
+			//     60m
 			//
-			// Therefore sectors are NEVER connected by index
-			// across band boundaries.
+			// Both sides reference exactly the same vertices.
 			//
+			// ============================================================
+
+			const boundaryAngles = [];
+
+			for (let boundary = 0; boundary <= radialGrid.bands.length; boundary++) {
+				// Center
+				if (boundary === 0) {
+					boundaryAngles.push([0]);
+					continue;
+				}
+
+				// Outer boundary
+				if (boundary === radialGrid.bands.length) {
+					const band = radialGrid.bands[boundary - 1];
+
+					boundaryAngles.push(getBandAngles(band));
+
+					continue;
+				}
+
+				// Interior band boundary
+				const previous = radialGrid.bands[boundary - 1];
+
+				const next = radialGrid.bands[boundary];
+
+				boundaryAngles.push(
+					mergeAngles(getBandAngles(previous), getBandAngles(next)),
+				);
+			}
+
+			// ============================================================
+			// Create Ring
+			// ============================================================
+
+			function createRing(radius, angles) {
+				if (radius <= 1e-6) {
+					const center = addVertex(0, 0);
+
+					return angles.map(() => center);
+				}
+
+				return angles.map((angle) => addVertex(radius, angle));
+			}
+
+			// ============================================================
+			// Stitch Two Rings
+			// ============================================================
+			//
+			// Handles different vertex counts between rings.
+			//
+			// The final interval explicitly wraps from the last
+			// angular vertex back to the first vertex + 2π.
+			//
+			// This prevents the θ = 0 seam.
+			//
+			// ============================================================
+
+			function stitchRings(innerRing, innerAngles, outerRing, outerAngles) {
+				const innerCount = innerRing.length;
+				const outerCount = outerRing.length;
+
+				// --------------------------------------------------------
+				// Center -> outer ring
+				// --------------------------------------------------------
+
+				if (innerCount === 1) {
+					const center = innerRing[0];
+
+					for (let j = 0; j < outerCount; j++) {
+						const next = (j + 1) % outerCount;
+
+						indices.push(center, outerRing[j], outerRing[next]);
+					}
+
+					return;
+				}
+
+				// --------------------------------------------------------
+				// General ring stitching
+				// --------------------------------------------------------
+
+				let i = 0;
+				let j = 0;
+
+				const epsilon = 1e-10;
+
+				while (true) {
+					const nextInner =
+						i + 1 < innerCount ? innerAngles[i + 1] : innerAngles[0] + TAU;
+
+					const nextOuter =
+						j + 1 < outerCount ? outerAngles[j + 1] : outerAngles[0] + TAU;
+
+					const currentInner = innerRing[i];
+
+					const currentOuter = outerRing[j];
+
+					// ----------------------------------------------------
+					// Both rings finish their final interval.
+					// ----------------------------------------------------
+
+					if (i === innerCount - 1 && j === outerCount - 1) {
+						/*
+						 * Final quad crosses the θ=0 seam.
+						 */
+						const nextInnerIndex = 0;
+						const nextOuterIndex = 0;
+
+						indices.push(
+							currentInner,
+							currentOuter,
+							innerRing[nextInnerIndex],
+
+							innerRing[nextInnerIndex],
+							currentOuter,
+							outerRing[nextOuterIndex],
+						);
+
+						break;
+					}
+
+					// ----------------------------------------------------
+					// Inner ring reaches its next vertex first.
+					// ----------------------------------------------------
+
+					if (nextInner < nextOuter - epsilon) {
+						const nextInnerIndex = (i + 1) % innerCount;
+
+						indices.push(currentInner, currentOuter, innerRing[nextInnerIndex]);
+
+						i++;
+
+						continue;
+					}
+
+					// ----------------------------------------------------
+					// Outer ring reaches its next vertex first.
+					// ----------------------------------------------------
+
+					if (nextOuter < nextInner - epsilon) {
+						const nextOuterIndex = (j + 1) % outerCount;
+
+						indices.push(currentInner, outerRing[nextOuterIndex], currentOuter);
+
+						j++;
+
+						continue;
+					}
+
+					// ----------------------------------------------------
+					// Both rings have a vertex at the same angle.
+					// ----------------------------------------------------
+
+					const nextInnerIndex = (i + 1) % innerCount;
+
+					const nextOuterIndex = (j + 1) % outerCount;
+
+					indices.push(
+						currentInner,
+						currentOuter,
+						innerRing[nextInnerIndex],
+
+						innerRing[nextInnerIndex],
+						currentOuter,
+						outerRing[nextOuterIndex],
+					);
+
+					i++;
+					j++;
+				}
+			}
+
+			// ============================================================
+			// Build Bands
 			// ============================================================
 
 			for (
@@ -218,95 +445,53 @@
 			) {
 				const band = radialGrid.bands[bandIndex];
 
-				const sectors = band.angular_sectors;
-
-				const rings = band.ring_count;
-
-				const dr = band.actual_resolution;
+				const rings = [];
 
 				// --------------------------------------------------------
-				// Vertices
+				// Create radial rings
 				// --------------------------------------------------------
 
-				const bandVertices = [];
+				for (let ring = 0; ring <= band.ring_count; ring++) {
+					const radius = band.start + ring * band.actual_resolution;
 
-				for (let ring = 0; ring <= rings; ring++) {
-					const radius = band.start + ring * dr;
+					let angles;
 
-					const ringVertices = [];
-
-					// ----------------------------------------------------
-					// Center
-					// ----------------------------------------------------
-
-					if (radius <= 1e-6) {
-						const center = addVertex(0, 0);
-
-						for (let sector = 0; sector < sectors; sector++) {
-							ringVertices.push(center);
-						}
+					// Shared inner boundary
+					if (ring === 0) {
+						angles = boundaryAngles[bandIndex];
 					}
 
-					// ----------------------------------------------------
-					// Normal ring
-					// ----------------------------------------------------
+					// Shared outer boundary
+					else if (ring === band.ring_count) {
+						angles = boundaryAngles[bandIndex + 1];
+					}
+
+					// Interior ring
 					else {
-						for (let sector = 0; sector < sectors; sector++) {
-							const theta = (sector / sectors) * TAU;
-
-							ringVertices.push(addVertex(radius, theta));
-						}
+						angles = getBandAngles(band);
 					}
 
-					bandVertices.push(ringVertices);
+					rings.push({
+						radius,
+						angles,
+						vertices: createRing(radius, angles),
+					});
 				}
 
 				// --------------------------------------------------------
-				// Triangles
+				// Stitch radial rings
 				// --------------------------------------------------------
 
-				for (let ring = 0; ring < rings; ring++) {
-					const inner = bandVertices[ring];
+				for (let ring = 0; ring < rings.length - 1; ring++) {
+					const inner = rings[ring];
+					const outer = rings[ring + 1];
 
-					const outer = bandVertices[ring + 1];
-
-					const innerRadius = band.start + ring * dr;
-
-					for (let sector = 0; sector < sectors; sector++) {
-						const nextSector = (sector + 1) % sectors;
-
-						const a = inner[sector];
-
-						const b = inner[nextSector];
-
-						const c = outer[sector];
-
-						const d = outer[nextSector];
-
-						// ------------------------------------------------
-						// Center fan
-						// ------------------------------------------------
-
-						if (innerRadius <= 1e-6) {
-							indices.push(a, c, d);
-
-							continue;
-						}
-
-						// ------------------------------------------------
-						// Normal quad
-						// ------------------------------------------------
-
-						indices.push(
-							a,
-							c,
-							b,
-
-							b,
-							c,
-							d,
-						);
-					}
+					stitchRings(
+						inner.vertices,
+						inner.angles,
+						outer.vertices,
+						outer.angles,
+					);
 				}
 			}
 
@@ -344,7 +529,7 @@
 			controls.update();
 
 			// ============================================================
-			// Ground Geometry
+			// Geometry
 			// ============================================================
 
 			const geometry = new THREE.BufferGeometry();
@@ -404,20 +589,17 @@
 			// Information
 			// ============================================================
 
+			const boundaryInfo = boundaryAngles
+				.map((angles) => angles.length)
+				.join(" / ");
+
 			document.getElementById("info").textContent =
 				`Radial Ground Mesh\n` +
 				`----------------------\n` +
 				`Grid cells: ${radialGrid.numCells.toLocaleString()}\n` +
 				`Mesh vertices: ${(vertices.length / 3).toLocaleString()}\n` +
-				`Triangles: ${(indices.length / 3).toLocaleString()}\n\n` +
-				radialGrid.bands
-					.map(
-						(band, i) =>
-							`B${i}: ` +
-							`${band.ring_count} rings × ` +
-							`${band.angular_sectors} sectors`,
-					)
-					.join("\n");
+				`Triangles: ${(indices.length / 3).toLocaleString()}\n` +
+				`Boundary vertices: ${boundaryInfo}`;
 
 			// ============================================================
 			// Resize
