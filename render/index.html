@@ -210,18 +210,18 @@
 			<div id="title">BB25L LiDAR Viewer</div>
 
 			<nav id="view-tabs">
-			<button class="view-tab active" data-view="raster" type="button">
-				Raster 3D
-			</button>
+				<button class="view-tab active" data-view="raster" type="button">
+					Raster 3D
+				</button>
 
-			<button class="view-tab" data-view="raster2d" type="button">
-				Raster 2D
-			</button>
+				<button class="view-tab" data-view="raster2d" type="button">
+					Raster 2D
+				</button>
 
-			<button class="view-tab" data-view="pointCloud" type="button">
-				Point Cloud
-			</button>
-		</nav>
+				<button class="view-tab" data-view="pointCloud" type="button">
+					Point Cloud
+				</button>
+			</nav>
 		</header>
 
 		<div id="info">Loading...</div>
@@ -259,17 +259,17 @@
 		     BB25L Decoder Dependencies
 		     ============================================================ -->
 
-		<script src="./js/decode/fzstd.js"></script>
-		<script src="./js/decode/bb25l.js"></script>
+		<script src="../js/decode/fzstd.js"></script>
+		<script src="../js/decode/bb25l.js"></script>
 
 		<!-- ============================================================
 		     Application
 		     ============================================================ -->
 
 		<script type="module">
-			import { RASTER_FRAME_COUNT } from "./js/view/raster_view.js";
+			import { RASTER_FRAME_COUNT } from "../js/view/raster_view.js";
 
-			import "./js/main.js";
+			import "../js/main.js";
 
 			// ========================================================
 			// UI

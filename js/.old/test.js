@@ -15,7 +15,7 @@ const FRAME_COUNT = 992;
 const FPS = 25;
 const FRAME_INTERVAL = 1000 / FPS;
 
-const FRAME_DIRECTORY = "./data/raster";
+const FRAME_DIRECTORY = "/data/raster";
 const FRAME_PREFIX = "frame_0";
 const FRAME_EXTENSION = ".bb25l";
 

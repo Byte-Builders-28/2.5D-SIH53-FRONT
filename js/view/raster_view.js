@@ -8,7 +8,7 @@ import { RadialDisc3D } from "./radial_disc_3d.js";
 export const RASTER_FRAME_COUNT = 992;
 export const RASTER_FPS = 25;
 
-export const RASTER_FRAME_DIRECTORY = "./data/raster";
+export const RASTER_FRAME_DIRECTORY = "/data/raster";
 export const RASTER_FRAME_PREFIX = "frame_";
 export const RASTER_FRAME_EXTENSION = ".bb25l";
 

@@ -30,8 +30,8 @@ export const PC_FRAME_COUNT = 992;
 export const PC_FPS = 25;
 
 // Source configuration (matches FrameManager.setSource() API).
-export const PC_FRAME_DIRECTORY = "./data/pc";
-export const PC_FRAME_PREFIX    = "frame_pc_";
+export const PC_FRAME_DIRECTORY = "/data/pc";
+export const PC_FRAME_PREFIX = "frame_pc_";
 export const PC_FRAME_EXTENSION = ".bin";
 
 // ============================================================
@@ -98,7 +98,10 @@ function decompressZstd(bytes) {
  *   positions   – flat XYZ buffer, length = pointCount * 3
  *   pointCount  – number of valid points in positions
  */
-export function decodePointCloudFrame(rawData, { maxPoints = PC_MAX_POINTS } = {}) {
+export function decodePointCloudFrame(
+	rawData,
+	{ maxPoints = PC_MAX_POINTS } = {},
+) {
 	// --------------------------------------------------------
 	// Normalise input to Uint8Array
 	// --------------------------------------------------------
