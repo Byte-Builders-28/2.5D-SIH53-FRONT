@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<title>LiDimention | 2.5D Adaptive Processing Pipeline</title>
+
+		<link rel="stylesheet" href="../css/global.css" />
+		<link rel="stylesheet" href="../css/pipeline.css" />
+	</head>
+
+	<body>
+		<!-- Ambient Background -->
+		<div class="background">
+			<div class="grid"></div>
+			<div class="glow"></div>
+		</div>
+
+		<!-- Top Header -->
+		<header class="top-header">
+			<div class="brand-group">
+				<a class="brand" href="/" title="Back to LiDimention Home">
+					Li<span>Dimention</span>
+				</a>
+				<span class="brand-eyebrow">Pipeline</span>
+			</div>
+			<div class="topbar-actions">
+				<a class="nav-btn" href="/render">Explore Demo</a>
+				<a class="nav-btn" href="/compare">Compare</a>
+				<a class="nav-btn" href="/">← Home</a>
+			</div>
+		</header>
+
+		<!-- Main Content -->
+		<main>
+			<!-- Hero Section -->
+			<section class="hero">
+				<div class="eyebrow">Architecture &amp; Methodology</div>
+				<h1>
+					2.5D Adaptive LiDAR <span class="accent">Processing Pipeline</span>
+				</h1>
+				<p class="hero-lead">
+					A sensor-centric, distance-adaptive perception pipeline that
+					transforms dense 3D LiDAR point clouds into a compact, semantically
+					rich 2.5D representation—preserving detail where it matters.
+				</p>
+			</section>
+
+			<!-- At-a-Glance Pipeline Strip -->
+			<section class="flow-overview">
+				<div class="flow-title">
+					<span>End-to-End Pipeline Flow</span>
+				</div>
+				<div class="flow-strip">
+					<span class="flow-step-pill">01. Preprocessing</span>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill highlight-randla"
+						>02. RandLA-Net (Segmentation)</span
+					>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill highlight-dbscan"
+						>03. DBSCAN (Clustering)</span
+					>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill">04. Adaptive Radial Grid</span>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill">05. 2.5D Rasterization</span>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill">06. Sparse Data Structure</span>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill">07. 10B Encoding</span>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill">08. Compression</span>
+					<span class="flow-arrow">→</span>
+					<span class="flow-step-pill">09. Visualization</span>
+				</div>
+			</section>
+
+			<!-- Algorithm Spotlight: RandLA-Net & DBSCAN -->
+			<section class="algo-section">
+				<div class="section-eyebrow">
+					<span class="dot"></span>
+					<span>Core Algorithms Spotlight</span>
+				</div>
+
+				<div class="algo-grid">
+					<!-- RandLA-Net -->
+					<div class="algo-card randla">
+						<span class="algo-badge">Algorithm 1</span>
+						<h2 class="algo-name">RandLA-Net</h2>
+						<div class="algo-role">Point-Wise Semantic Segmentation</div>
+						<p class="algo-description">
+							High-efficiency deep neural network used to classify dense 3D
+							point clouds at scale. It segments the environment into functional
+							layers without heavy point-sampling bottlenecks, providing the
+							foundation for multi-layer 2.5D decomposition.
+						</p>
+						<div class="algo-tags">
+							<span class="algo-tag">Drivable Terrain</span>
+							<span class="algo-tag">Non-Drivable</span>
+							<span class="algo-tag">Static Obstacles</span>
+							<span class="algo-tag">Dynamic Objects</span>
+						</div>
+					</div>
+
+					<!-- DBSCAN -->
+					<div class="algo-card dbscan">
+						<span class="algo-badge">Algorithm 2</span>
+						<h2 class="algo-name">DBSCAN</h2>
+						<div class="algo-role">Density-Based Spatial Clustering</div>
+						<p class="algo-description">
+							Non-parametric spatial clustering applied across segmented
+							obstacle layers. It detects distinct object instances of arbitrary
+							geometry and rejects noise without requiring a predefined cluster
+							count (k), enabling precise object extraction.
+						</p>
+						<div class="algo-tags">
+							<span class="algo-tag">Spatial Clustering</span>
+							<span class="algo-tag">Arbitrary Shapes</span>
+							<span class="algo-tag">Noise Outlier Rejection</span>
+							<span class="algo-tag">Object Instances</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- 9 Pipeline Stages Grid -->
+			<section class="stages-section">
+				<div class="section-eyebrow">
+					<span class="dot"></span>
+					<span>Pipeline Stages (At-a-Glance)</span>
+				</div>
+
+				<div class="stages-grid">
+					<!-- Stage 1 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 01</span>
+						<h3 class="stage-title">Point-Cloud Preprocessing</h3>
+						<p class="stage-desc">
+							Prepares raw LiDAR points for downstream perception, reducing
+							point redundancy while preserving essential scene geometry.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Key Operations</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Spatial alignment &amp;
+									normalization
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Noise &amp; outlier
+									elimination
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Initial ground extraction
+								</li>
+							</ul>
+						</div>
+					</div>
+
+					<!-- Stage 2 -->
+					<div class="stage-card is-algo-randla">
+						<span class="stage-num-badge">Stage 02 • RandLA-Net</span>
+						<h3 class="stage-title">Semantic Segmentation</h3>
+						<p class="stage-desc">
+							Classifies the 3D environment point-by-point to establish semantic
+							boundaries for downstream layer separation.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Semantic Classification</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Drivable vs. non-drivable
+									terrain
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Static structures &amp;
+									barriers
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Dynamic vehicles &amp;
+									pedestrians
+								</li>
+							</ul>
+						</div>
+					</div>
+
+					<!-- Stage 3 -->
+					<div class="stage-card is-algo-dbscan">
+						<span class="stage-num-badge">Stage 03 • DBSCAN</span>
+						<h3 class="stage-title">Object Detection</h3>
+						<p class="stage-desc">
+							Groups segmented points into spatial clusters to identify
+							individual obstacle instances without predefined object counts.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Instance Properties</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Object centroid &amp; 3D
+									spatial extent
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Min/max height boundaries
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Semantic class association
+								</li>
+							</ul>
+						</div>
+					</div>
+
+					<!-- Stage 4 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 04</span>
+						<h3 class="stage-title">Sensor-Centric Radial Grid</h3>
+						<p class="stage-desc">
+							Divides space into concentric radial bands that progressively
+							scale spatial resolution based on distance from the sensor.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Distance Resolution Bands</span>
+							<div class="radial-layers-box">
+								<div class="radial-layer">
+									<span class="radial-layer-name">Near</span>
+									<span class="radial-layer-res">High Detail</span>
+								</div>
+								<div class="radial-layer">
+									<span class="radial-layer-name">Mid</span>
+									<span class="radial-layer-res">Medium Res</span>
+								</div>
+								<div class="radial-layer">
+									<span class="radial-layer-name">Far</span>
+									<span class="radial-layer-res">Efficient</span>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Stage 5 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 05</span>
+						<h3 class="stage-title">Adaptive 2.5D Rasterization</h3>
+						<p class="stage-desc">
+							Maps segmented points onto the radial grid, condensing millions of
+							points into multi-layer height summaries per occupied cell.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Multi-Layer Summaries</span>
+							<div class="layers-stack">
+								<div class="layer-chip ground">
+									<span class="layer-chip-name">Ground</span>
+									<span class="layer-chip-detail">Elevation + variation</span>
+								</div>
+								<div class="layer-chip static">
+									<span class="layer-chip-name">Static</span>
+									<span class="layer-chip-detail">Obstacle min/max Z</span>
+								</div>
+								<div class="layer-chip dynamic">
+									<span class="layer-chip-name">Dynamic</span>
+									<span class="layer-chip-detail">Object min/max Z</span>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Stage 6 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 06</span>
+						<h3 class="stage-title">2.5D Data Structure</h3>
+						<p class="stage-desc">
+							Organizes the environment as a sparse radial structure. Empty
+							cells are completely omitted, preserving bandwidth and memory.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Sparse Representation</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Separated Cell IDs &amp;
+									Payloads
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Layer-presence bitflags
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Semantic category metadata
+								</li>
+							</ul>
+						</div>
+					</div>
+
+					<!-- Stage 7 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 07</span>
+						<h3 class="stage-title">Compact Binary Encoding</h3>
+						<p class="stage-desc">
+							Packs multi-layer cell information into a fixed, ultra-compact
+							payload, shrinking raw LiDAR data by orders of magnitude.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Cell Payload Specification</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span
+									><strong>10 bytes</strong> per occupied cell
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Packed ground elevation
+									&amp; variance
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Static &amp; dynamic
+									height boundaries
+								</li>
+							</ul>
+						</div>
+					</div>
+
+					<!-- Stage 8 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 08</span>
+						<h3 class="stage-title">Compression &amp; Streaming</h3>
+						<p class="stage-desc">
+							Applies high-ratio entropy coding over sparse frames for ultra-low
+							latency incremental network transmission.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">Streaming Properties</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Zstandard compression
+									(3.5–5×)
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Output: ~1–3 MB/sec
+									bandwidth
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Real-time frame transfer
+									(25 FPS)
+								</li>
+							</ul>
+						</div>
+					</div>
+
+					<!-- Stage 9 -->
+					<div class="stage-card">
+						<span class="stage-num-badge">Stage 09</span>
+						<h3 class="stage-title">Visualization</h3>
+						<p class="stage-desc">
+							Decodes the compact stream in-browser and renders the radial 2.5D
+							environment seamlessly with WebGL / Three.js.
+						</p>
+						<div class="feature-box">
+							<span class="feature-box-title">View Capabilities</span>
+							<ul class="feature-list">
+								<li class="feature-item">
+									<span class="feature-bullet"></span>3D displaced terrain &amp;
+									obstacles
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>2D semantic top-down
+									mapping
+								</li>
+								<li class="feature-item">
+									<span class="feature-bullet"></span>Interactive
+									distance-adaptive discs
+								</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</section>
+
+
+				<div class="cta-group">
+					<a class="btn-primary" href="/render">Explore Demo</a>
+					<a class="btn-secondary" href="/compare">Compare Metrics</a>
+				</div>
+			</section>
+		</main>
+	</body>
+</html>
