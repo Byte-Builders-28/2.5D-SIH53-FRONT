@@ -1,5 +1,5 @@
 /* ========================================================
-   LiDimention - Comparison Page Stylesheet
+   LiDimension - Comparison Page Stylesheet
    Uses global.css variables & visual design system
    ======================================================== */
 
@@ -9,12 +9,7 @@
 	--comp-accent: #f2b705;
 
 	--font-mono:
-		ui-monospace,
-		SFMono-Regular,
-		"Roboto Mono",
-		Menlo,
-		Consolas,
-		monospace;
+		ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace;
 }
 
 /* Allow vertical scroll for content while preventing horizontal overflow */

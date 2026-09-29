@@ -1,5 +1,5 @@
 /* ========================================================
-   LiDimention - Render Page Styling
+   LiDimension - Render Page Styling
    Inherits variables & typography from global.css
    ======================================================== */
 
@@ -280,7 +280,7 @@ canvas {
 	max-width: 380px;
 	z-index: 8;
 
-	background: rgba(6, 13, 32, 0.90);
+	background: rgba(6, 13, 32, 0.9);
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
 	border: 1px solid rgba(252, 241, 208, 0.28);
