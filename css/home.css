@@ -111,6 +111,7 @@
 }
 
 .sensor {
+	opacity: 0.35;
 	position: absolute;
 	left: 50%;
 	top: 50%;
