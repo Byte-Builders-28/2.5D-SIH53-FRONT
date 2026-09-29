@@ -44,8 +44,8 @@
 		<main id="video-viewer">
 			<div class="video-panel active" id="video1">
 				<iframe
-					src="https://www.youtube.com/embed/YOUR_VIDEO_ID_1"
-					title="LiDimention Video 01"
+					src="https://www.youtube.com/embed/68GRgdNKXlo"
+					title="LiDimention - Raster 3D"
 					allow="
 						accelerometer;
 						autoplay;
@@ -59,44 +59,49 @@
 				</iframe>
 			</div>
 
-			<div class="video-panel" id="video2">
-				<iframe
-					src="https://www.youtube.com/embed/YOUR_VIDEO_ID_2"
-					title="LiDimention Video 02"
-					allow="
-						accelerometer;
-						autoplay;
-						clipboard-write;
-						encrypted-media;
-						gyroscope;
-						picture-in-picture;
-						web-share;
-					"
-					allowfullscreen>
-				</iframe>
-			</div>
+			<div class="video-panel" id="video2"></div>
 
-			<div class="video-panel" id="video3">
-				<iframe
-					src="https://www.youtube.com/embed/YOUR_VIDEO_ID_3"
-					title="LiDimention Video 03"
-					allow="
-						accelerometer;
-						autoplay;
-						clipboard-write;
-						encrypted-media;
-						gyroscope;
-						picture-in-picture;
-						web-share;
-					"
-					allowfullscreen>
-				</iframe>
-			</div>
+			<div class="video-panel" id="video3"></div>
 		</main>
 
 		<script>
+			const videoSources = {
+				video1: {
+					id: "68GRgdNKXlo",
+					title: "LiDimention - Raster 3D",
+				},
+				video2: {
+					id: "GhEQMlR-5Mg",
+					title: "LiDimention - Raster 2D",
+				},
+				video3: {
+					id: "H-MhTKdv82E",
+					title: "LiDimention - Point Cloud",
+				},
+			};
+
 			const tabs = document.querySelectorAll(".view-tab");
 			const videos = document.querySelectorAll(".video-panel");
+
+			function loadVideo(panel) {
+				if (panel.querySelector("iframe")) {
+					return;
+				}
+
+				const video = videoSources[panel.id];
+
+				const iframe = document.createElement("iframe");
+
+				iframe.src = `https://www.youtube.com/embed/${video.id}`;
+				iframe.title = video.title;
+
+				iframe.allow =
+					"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+
+				iframe.allowFullscreen = true;
+
+				panel.appendChild(iframe);
+			}
 
 			for (const tab of tabs) {
 				tab.addEventListener("click", () => {
@@ -109,6 +114,8 @@
 					for (const video of videos) {
 						video.classList.toggle("active", video.id === target);
 					}
+
+					loadVideo(document.getElementById(target));
 				});
 			}
 		</script>
