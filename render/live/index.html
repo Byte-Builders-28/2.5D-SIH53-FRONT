@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<title>LiDimention | LiDAR Viewer</title>
+
+		<link rel="stylesheet" href="/css/global.css" />
+		<link rel="stylesheet" href="/css/render.css" />
+	</head>
+
+	<body>
+		<!-- ============================================================
+		     Application UI
+		     ============================================================ -->
+
+		<header id="topbar">
+			<div class="brand-group">
+				<a id="brand" href="/" title="Back to Home">
+					<span class="brand-name">Li<span>Dimention</span></span>
+				</a>
+				<span class="brand-eyebrow">Live Viewer</span>
+			</div>
+
+			<nav id="view-tabs">
+				<button
+					class="view-tab active"
+					data-view="raster"
+					data-tooltip="3D reconstruction of adaptive grid from 2.5D raster output"
+					aria-label="3D reconstruction of adaptive grid from 2.5D raster output"
+					type="button">
+					Raster 3D
+				</button>
+
+				<button
+					class="view-tab"
+					data-view="raster2d"
+					data-tooltip="2D reconstruction of adaptive grid from 2.5D raster output"
+					aria-label="2D reconstruction of adaptive grid from 2.5D raster output"
+					type="button">
+					Raster 2D
+				</button>
+
+				<button class="view-tab" data-view="pointCloud" type="button">
+					Point Cloud
+				</button>
+			</nav>
+
+			<div class="topbar-actions">
+				<a class="nav-btn" href="/pipeline">Pipeline</a>
+				<a class="nav-btn" href="/compare">Compare</a>
+				<a class="nav-btn" href="/">← Home</a>
+			</div>
+		</header>
+
+		<div id="info">Loading...</div>
+
+		<aside id="pointcloud-disclaimer" role="note" aria-live="polite">
+			<div class="pc-disclaimer-header">
+				<span class="pc-disclaimer-dot"></span>
+				<span class="pc-disclaimer-title">Point Cloud Notice</span>
+			</div>
+			<p class="pc-disclaimer-text">
+				Point cloud is <strong>heavily downsampled</strong> (2.5m resolution)
+				for real-time web playback. The original LiDAR scan has
+				<strong>~1M points per frame</strong>. The 2.5D raster representation is
+				generated directly from the
+				<strong>original full-resolution point cloud</strong>.
+			</p>
+		</aside>
+
+		<aside id="controls-hint" aria-label="Camera controls guide">
+			<div class="hint-header">
+				<span class="hint-dot"></span>
+				<span class="hint-title">Orbit Controls</span>
+			</div>
+			<div class="hint-list">
+				<div class="hint-row">
+					<span class="hint-action">Rotate</span>
+					<span class="hint-keys"><kbd>Left Drag</kbd></span>
+				</div>
+				<div class="hint-row">
+					<span class="hint-action">Pan</span>
+					<span class="hint-keys"><kbd>Right Drag</kbd> <kbd>Arrows</kbd></span>
+				</div>
+				<div class="hint-row">
+					<span class="hint-action">Zoom</span>
+					<span class="hint-keys"><kbd>Scroll</kbd></span>
+				</div>
+			</div>
+		</aside>
+
+		<div id="playback">
+			<button id="play-button" type="button" aria-label="Play or pause">
+				▶
+			</button>
+
+			<input
+				id="frame-slider"
+				type="range"
+				min="0"
+				max="991"
+				value="0"
+				step="1" />
+
+			<div id="frame-label">Frame 0000 / 0991</div>
+		</div>
+
+		<!-- ============================================================
+		     Three.js
+		     ============================================================ -->
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+					"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+				}
+			}
+		</script>
+
+		<!-- ============================================================
+		     BB25L Decoder Dependencies
+		     ============================================================ -->
+
+		<script src="/js/decode/fzstd.js"></script>
+		<script src="/js/decode/bb25l.js"></script>
+
+		<!-- ============================================================
+		     Application
+		     ============================================================ -->
+
+		<script type="module">
+			import { RASTER_FRAME_COUNT } from "/js/view/raster_view.js";
+
+			import "/js/main.js";
+
+			// ========================================================
+			// UI
+			// ========================================================
+
+			const playButton = document.getElementById("play-button");
+
+			const frameSlider = document.getElementById("frame-slider");
+
+			const frameLabel = document.getElementById("frame-label");
+
+			const viewTabs = document.querySelectorAll(".view-tab");
+
+			// ========================================================
+			// Frame Slider
+			// ========================================================
+
+			frameSlider.max = RASTER_FRAME_COUNT - 1;
+
+			frameSlider.value = 0;
+
+			function updateFrameLabel(frame) {
+				frameLabel.textContent =
+					`Frame ${frame.toString().padStart(4, "0")} / ` +
+					`${(RASTER_FRAME_COUNT - 1).toString().padStart(4, "0")}`;
+			}
+
+			frameSlider.addEventListener("input", () => {
+				app.getPlayback().seekFrame(Number(frameSlider.value));
+			});
+
+			// ========================================================
+			// Play / Pause
+			// ========================================================
+
+			playButton.addEventListener("click", () => {
+				app.getPlayback().toggle();
+			});
+
+			// ========================================================
+			// View Tabs
+			// ========================================================
+
+			for (const tab of viewTabs) {
+				tab.addEventListener("click", () => {
+					const viewName = tab.dataset.view;
+
+					if (!app.getViewManager().hasView(viewName)) {
+						return;
+					}
+
+					app.setView(viewName);
+
+					for (const otherTab of viewTabs) {
+						otherTab.classList.toggle("active", otherTab === tab);
+					}
+				});
+			}
+
+			// ========================================================
+			// Playback UI Synchronization
+			// ========================================================
+
+			app.getPlayback().setFrameCallback((frame) => {
+				frameSlider.value = frame;
+
+				updateFrameLabel(frame);
+			});
+
+			app.getPlayback().setStateCallback((state) => {
+				playButton.textContent = state.playing ? "❚❚" : "▶";
+			});
+
+			// ========================================================
+			// Initial UI
+			// ========================================================
+
+			updateFrameLabel(0);
+		</script>
+	</body>
+</html>

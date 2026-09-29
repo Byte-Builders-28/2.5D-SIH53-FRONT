@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<title>LiDimention | Prerecorded Viewer</title>
+
+		<link rel="stylesheet" href="/css/global.css" />
+		<link rel="stylesheet" href="/css/prerecorded.css" />
+	</head>
+
+	<body>
+		<header id="topbar">
+			<div class="brand-group">
+				<a id="brand" href="/" title="Back to Home">
+					<span class="brand-name">Li<span>Dimention</span></span>
+				</a>
+
+				<span class="brand-eyebrow">Prerecorded Viewer</span>
+			</div>
+
+			<nav id="view-tabs">
+				<button class="view-tab active" data-video="video1" type="button">
+					Raster 3D
+				</button>
+
+				<button class="view-tab" data-video="video2" type="button">
+					Raster 2D
+				</button>
+
+				<button class="view-tab" data-video="video3" type="button">
+					Point Cloud
+				</button>
+			</nav>
+
+			<div class="topbar-actions">
+				<a class="nav-btn" href="/pipeline">Pipeline</a>
+				<a class="nav-btn" href="/compare">Compare</a>
+				<a class="nav-btn" href="/">← Home</a>
+			</div>
+		</header>
+
+		<main id="video-viewer">
+			<div class="video-panel active" id="video1">
+				<iframe
+					src="https://www.youtube.com/embed/YOUR_VIDEO_ID_1"
+					title="LiDimention Video 01"
+					allow="
+						accelerometer;
+						autoplay;
+						clipboard-write;
+						encrypted-media;
+						gyroscope;
+						picture-in-picture;
+						web-share;
+					"
+					allowfullscreen>
+				</iframe>
+			</div>
+
+			<div class="video-panel" id="video2">
+				<iframe
+					src="https://www.youtube.com/embed/YOUR_VIDEO_ID_2"
+					title="LiDimention Video 02"
+					allow="
+						accelerometer;
+						autoplay;
+						clipboard-write;
+						encrypted-media;
+						gyroscope;
+						picture-in-picture;
+						web-share;
+					"
+					allowfullscreen>
+				</iframe>
+			</div>
+
+			<div class="video-panel" id="video3">
+				<iframe
+					src="https://www.youtube.com/embed/YOUR_VIDEO_ID_3"
+					title="LiDimention Video 03"
+					allow="
+						accelerometer;
+						autoplay;
+						clipboard-write;
+						encrypted-media;
+						gyroscope;
+						picture-in-picture;
+						web-share;
+					"
+					allowfullscreen>
+				</iframe>
+			</div>
+		</main>
+
+		<script>
+			const tabs = document.querySelectorAll(".view-tab");
+			const videos = document.querySelectorAll(".video-panel");
+
+			for (const tab of tabs) {
+				tab.addEventListener("click", () => {
+					const target = tab.dataset.video;
+
+					for (const otherTab of tabs) {
+						otherTab.classList.toggle("active", otherTab === tab);
+					}
+
+					for (const video of videos) {
+						video.classList.toggle("active", video.id === target);
+					}
+				});
+			}
+		</script>
+	</body>
+</html>
